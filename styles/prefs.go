@@ -6,4 +6,4 @@ package styles
 
 // PrefFontFamily is the preferred fallback font family to use
 // when the specified font is not available. It defaults to Roboto.
-var PrefFontFamily = "Roboto"
+var PrefFontFamily = "Unifont"

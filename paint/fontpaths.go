@@ -4,7 +4,12 @@
 
 package paint
 
-import "runtime"
+import (
+	"runtime"
+	"os"
+	"strings"
+)
+
 
 // FontPaths contains the filepaths in which fonts are stored for the current platform.
 var FontPaths []string
@@ -17,6 +22,8 @@ func init() {
 		FontPaths = []string{"/System/Library/Fonts", "/Library/Fonts"}
 	case "js":
 		FontPaths = []string{"/fonts"}
+	case "freebsd":
+		FontPaths = []string{"/usr/local/share/fonts",os.Args[0][:strings.LastIndexAny(os.Args[0],"/")+1],os.Args[0][:strings.LastIndexAny(os.Args[0],"/")+1]+"fonts/"}
 	case "linux":
 		// different distros have a different path
 		FontPaths = []string{"/usr/share/fonts/truetype", "/usr/share/fonts/TTF"}

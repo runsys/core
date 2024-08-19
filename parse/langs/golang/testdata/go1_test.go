@@ -1130,7 +1130,7 @@ type Lang interface {
 
 var TextViewProperties = tree.Properties{
 	"white-space":      core.WhiteSpacePreWrap,
-	"font-family":      "Go Mono",
+	"font-family":      "Noto Sans",
 	"border-width":     0, // don't render our own border
 	"cursor-width":     units.NewValue(3, units.Px),
 	"border-color":     &core.Settings.Colors.Border,

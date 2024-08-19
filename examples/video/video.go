@@ -11,6 +11,7 @@ import (
 func main() {
 	b := core.NewBody("Basic Video Example")
 	fr := core.NewFrame(b)
+
 	fr.Styler(func(s *styles.Style) {
 		s.Grow.Set(1, 1)
 	})

@@ -521,14 +521,14 @@ func (s *Style) SetMono(mono bool) {
 			s.Font.Family = *SettingsMonoFont
 			return
 		}
-		s.Font.Family = "mono"
+		s.Font.Family = "Unifont"
 		return
 	}
 	if SettingsFont != nil {
 		s.Font.Family = *SettingsFont
 		return
 	}
-	s.Font.Family = "sans-serif"
+	s.Font.Family = "Unifont"
 }
 
 // SetTextWrap sets the Text.WhiteSpace and GrowWrap properties in

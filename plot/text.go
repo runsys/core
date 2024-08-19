@@ -14,7 +14,7 @@ import (
 
 // DefaultFontFamily specifies a default font for plotting.
 // if not set, the standard Cogent Core default font is used.
-var DefaultFontFamily = ""
+var DefaultFontFamily = "Unifont"
 
 // TextStyle specifies styling parameters for Text elements
 type TextStyle struct {

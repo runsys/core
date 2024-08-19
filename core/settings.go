@@ -262,10 +262,10 @@ type AppearanceSettingsData struct { //types:add
 	HiStyle HiStyleName `default:"emacs"`
 
 	// Font is the default font family to use.
-	Font FontName `default:"Roboto"`
+	Font FontName `default:"Unifont"`
 
 	// MonoFont is the default mono-spaced font family to use.
-	MonoFont FontName `default:"Roboto Mono"`
+	MonoFont FontName `default:"Unifont"`
 }
 
 // Themes are the different possible themes that a user can select in their settings.
