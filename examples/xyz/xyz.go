@@ -31,7 +31,7 @@ type Anim struct {
 	// angular speed (in radians)
 	Speed float32 `min:"0.01" step:"0.01"`
 
-	// animate the torus
+	// animate the torusb
 	DoTorus bool
 
 	// animate the gopher
