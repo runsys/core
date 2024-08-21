@@ -193,7 +193,7 @@ func (fb *FontButton) Init() {
 			s.Font.Stretch = fi[row].Stretch
 			s.Font.Weight = fi[row].Weight
 			s.Font.Style = fi[row].Style
-			s.Font.Size.Pt(18)
+			s.Font.Size.Pt(36)
 		})
 		tb.OnChange(func(e events.Event) {
 			fb.Text = fi[si].Name

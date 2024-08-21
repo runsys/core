@@ -70,7 +70,7 @@ type Plot struct {
 // Defaults sets defaults
 func (pt *Plot) Defaults() {
 	pt.Title.Defaults()
-	pt.Title.Style.Size.Dp(24)
+	pt.Title.Style.Size.Dp(36)
 	pt.Background = colors.Scheme.Surface
 	pt.X.Defaults(math32.X)
 	pt.Y.Defaults(math32.Y)

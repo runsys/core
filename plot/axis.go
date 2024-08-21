@@ -79,10 +79,10 @@ func (ax *Axis) Defaults(dim math32.Dims) {
 	ax.Axis = dim
 	ax.Line.Defaults()
 	ax.Label.Defaults()
-	ax.Label.Style.Size.Dp(20)
+	ax.Label.Style.Size.Dp(36)
 	ax.Padding.Pt(5)
 	ax.TickText.Defaults()
-	ax.TickText.Style.Size.Dp(16)
+	ax.TickText.Style.Size.Dp(36)
 	ax.TickText.Style.Padding.Dp(2)
 	ax.TickLine.Defaults()
 	ax.TickLength.Pt(8)

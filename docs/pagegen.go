@@ -483,7 +483,7 @@ var PagesExamples = map[string]func(parent core.Widget){
 	},
 	"widgets/basic/text-4": func(parent core.Widget) {
 		core.NewText(parent).SetText("Hello,\n\tworld!").Styler(func(s *styles.Style) {
-			s.Font.Size.Dp(21)
+			s.Font.Size.Dp(36)
 			s.Font.Style = styles.Italic
 			s.Text.WhiteSpace = styles.WhiteSpacePre
 			s.Color = colors.Scheme.Success.Base

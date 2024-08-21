@@ -50,7 +50,7 @@ type Font struct { //types:add
 }
 
 func (fs *Font) Defaults() {
-	fs.Size = units.Dp(16)
+	fs.Size = units.Dp(36)
 }
 
 // InheritFields from parent
@@ -70,7 +70,7 @@ func (fs *Font) InheritFields(parent *Font) {
 func (fs *Font) ToDots(uc *units.Context) {
 	if fs.Size.Unit == units.UnitEm || fs.Size.Unit == units.UnitEx || fs.Size.Unit == units.UnitCh {
 		slog.Error("girl/styles.Font.Size was set to Em, Ex, or Ch; that is recursive and unstable!", "unit", fs.Size.Unit)
-		fs.Size.Dp(16)
+		fs.Size.Dp(36)
 	}
 	fs.Size.ToDots(uc)
 }

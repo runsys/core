@@ -86,14 +86,14 @@ func (m *Meter) Init() {
 		case MeterCircle:
 			s.Min.Set(units.Dp(128))
 			m.Width.Dp(8)
-			s.Font.Size.Dp(32)
+			s.Font.Size.Dp(36)
 			s.Text.LineHeight.Dp(40)
 			s.Text.Align = styles.Center
 			s.Text.AlignV = styles.Center
 		case MeterSemicircle:
 			s.Min.Set(units.Dp(112), units.Dp(64))
 			m.Width.Dp(16)
-			s.Font.Size.Dp(22)
+			s.Font.Size.Dp(36)
 			s.Text.LineHeight.Dp(28)
 			s.Text.Align = styles.Center
 			s.Text.AlignV = styles.Center

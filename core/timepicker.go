@@ -50,7 +50,7 @@ func (tp *TimePicker) Init() {
 			w.SetValue(float32(tp.Hour))
 		})
 		w.Styler(func(s *styles.Style) {
-			s.Font.Size.Dp(57)
+			s.Font.Size.Dp(36)
 			s.Min.X.Dp(96)
 		})
 		w.OnChange(func(e events.Event) {
@@ -83,7 +83,7 @@ func (tp *TimePicker) Init() {
 			w.SetValue(float32(tp.Time.Minute()))
 		})
 		w.Styler(func(s *styles.Style) {
-			s.Font.Size.Dp(57)
+			s.Font.Size.Dp(36)
 			s.Min.X.Dp(96)
 		})
 		w.OnChange(func(e events.Event) {

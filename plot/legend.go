@@ -51,7 +51,7 @@ type Legend struct {
 func (lg *Legend) Defaults() {
 	lg.TextStyle.Defaults()
 	lg.TextStyle.Padding.Dp(2)
-	lg.TextStyle.Font.Size.Dp(20)
+	lg.TextStyle.Font.Size.Dp(36)
 	lg.Position.Defaults()
 	lg.ThumbnailWidth.Pt(20)
 	lg.Fill = gradient.ApplyOpacity(colors.Scheme.Surface, 0.75)

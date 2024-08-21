@@ -115,72 +115,72 @@ func (tx *Text) Init() {
 		switch tx.Type {
 		case TextLabelLarge:
 			s.Text.LineHeight.Dp(20)
-			s.Font.Size.Dp(14)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Dp(0.1)
 			s.Font.Weight = styles.WeightMedium // note: excludes all fonts except Go!
 		case TextLabelMedium:
 			s.Text.LineHeight.Dp(16)
-			s.Font.Size.Dp(12)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Dp(0.5)
 			s.Font.Weight = styles.WeightMedium
 		case TextLabelSmall:
 			s.Text.LineHeight.Dp(16)
-			s.Font.Size.Dp(11)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Dp(0.5)
 			s.Font.Weight = styles.WeightMedium
 		case TextBodyLarge:
 			s.Text.LineHeight.Dp(24)
-			s.Font.Size.Dp(16)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Dp(0.5)
 			s.Font.Weight = styles.WeightNormal
 		case TextBodyMedium:
 			s.Text.LineHeight.Dp(20)
-			s.Font.Size.Dp(14)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Dp(0.25)
 			s.Font.Weight = styles.WeightNormal
 		case TextBodySmall:
 			s.Text.LineHeight.Dp(16)
-			s.Font.Size.Dp(12)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Dp(0.4)
 			s.Font.Weight = styles.WeightNormal
 		case TextTitleLarge:
 			s.Text.LineHeight.Dp(28)
-			s.Font.Size.Dp(22)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Zero()
 			s.Font.Weight = styles.WeightNormal
 		case TextTitleMedium:
 			s.Text.LineHeight.Dp(24)
-			s.Font.Size.Dp(16)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Dp(0.15)
 			s.Font.Weight = styles.WeightMedium
 		case TextTitleSmall:
 			s.Text.LineHeight.Dp(20)
-			s.Font.Size.Dp(14)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Dp(0.1)
 			s.Font.Weight = styles.WeightMedium
 		case TextHeadlineLarge:
 			s.Text.LineHeight.Dp(40)
-			s.Font.Size.Dp(32)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Zero()
 			s.Font.Weight = styles.WeightNormal
 		case TextHeadlineMedium:
 			s.Text.LineHeight.Dp(36)
-			s.Font.Size.Dp(28)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Zero()
 			s.Font.Weight = styles.WeightNormal
 		case TextHeadlineSmall:
 			s.Text.LineHeight.Dp(32)
-			s.Font.Size.Dp(24)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Zero()
 			s.Font.Weight = styles.WeightNormal
 		case TextDisplayLarge:
 			s.Text.LineHeight.Dp(64)
-			s.Font.Size.Dp(57)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Dp(-0.25)
 			s.Font.Weight = styles.WeightNormal
 		case TextDisplayMedium:
 			s.Text.LineHeight.Dp(52)
-			s.Font.Size.Dp(45)
+			s.Font.Size.Dp(36)
 			s.Text.LetterSpacing.Zero()
 			s.Font.Weight = styles.WeightNormal
 		case TextDisplaySmall:
