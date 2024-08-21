@@ -8,9 +8,11 @@ import (
 	"testing"
 
 	"cogentcore.org/core/colors"
+	"cogentcore.org/core/colors/gradient"
 	"cogentcore.org/core/icons"
 	"cogentcore.org/core/styles"
 	"cogentcore.org/core/styles/units"
+	"cogentcore.org/core/tree"
 )
 
 // For https://github.com/cogentcore/core/issues/614
@@ -19,7 +21,6 @@ func TestRenderOneSideBorder(t *testing.T) {
 	NewWidgetBase(b).Styler(func(s *styles.Style) {
 		s.Min.Set(units.Dp(100))
 		s.Border.Width.Bottom.Dp(10)
-		s.Border.Color.Bottom = colors.Scheme.Outline
 		s.Background = colors.Scheme.SurfaceContainerHigh
 	})
 	b.AssertRender(t, "render/one-side-border")
@@ -32,6 +33,50 @@ func TestRenderParentBorderRadius(t *testing.T) {
 		s.Padding.Zero()
 	})
 	b.AssertRender(t, "render/parent-border-radius")
+}
+
+// For https://github.com/cogentcore/core/issues/989
+func TestRenderParentBorderRadiusVerticalToolbar(t *testing.T) {
+	b := NewBody()
+	b.Scene.renderBBoxes = true
+	b.Styler(func(s *styles.Style) {
+		s.Min.Y.Em(10)
+	})
+	tb := NewToolbar(b)
+	tb.Styler(func(s *styles.Style) {
+		s.Direction = styles.Column
+		s.Background = colors.Scheme.Select.Container
+	})
+	tree.AddChild(tb, func(w *Button) {
+		w.SetIcon(icons.Close)
+		w.Styler(func(s *styles.Style) {
+			s.Background = colors.Scheme.Error.Base
+			s.Border.Radius.Zero()
+		})
+	})
+	b.AssertRender(t, "render/parent-border-radius-vertical-toolbar")
+}
+
+// For https://github.com/cogentcore/core/issues/989
+func TestRenderParentBorderRadiusHorizontalToolbar(t *testing.T) {
+	b := NewBody()
+	b.Scene.renderBBoxes = true
+	b.Styler(func(s *styles.Style) {
+		s.Min.X.Em(10)
+	})
+	tb := NewToolbar(b)
+	tb.Styler(func(s *styles.Style) {
+		s.Direction = styles.Row
+		s.Background = colors.Scheme.Select.Container
+	})
+	tree.AddChild(tb, func(w *Button) {
+		w.SetIcon(icons.Close)
+		w.Styler(func(s *styles.Style) {
+			s.Background = colors.Scheme.Error.Base
+			s.Border.Radius.Zero()
+		})
+	})
+	b.AssertRender(t, "render/parent-border-radius-horizontal-toolbar")
 }
 
 // For https://github.com/cogentcore/core/issues/810
@@ -118,4 +163,65 @@ func TestRenderNestedScroll(t *testing.T) {
 		s.Min.Set(units.Dp(300))
 	})
 	b.AssertRender(t, "render/nested-scroll")
+}
+
+// For https://github.com/cogentcore/core/issues/1011
+func TestRenderElementCutOff(t *testing.T) {
+	b := NewBody()
+	b.Styler(func(s *styles.Style) {
+		s.Min.X.Em(50)
+	})
+	sp := NewSplits(b)
+	NewFrame(sp)
+	fr := NewFrame(sp)
+	NewTextField(fr).Styler(func(s *styles.Style) {
+		s.Max.X.Zero()
+	})
+	NewButton(fr).SetIcon(icons.Send)
+	b.AssertRender(t, "render/element-cut-off")
+}
+
+// For https://github.com/cogentcore/core/issues/1012
+func TestRenderGridCenteredFrame(t *testing.T) {
+	b := NewBody()
+	grid := NewFrame(b)
+	grid.Styler(func(s *styles.Style) {
+		s.Display = styles.Grid
+		s.Columns = 2
+	})
+	nameLabel := NewText(grid).SetText("Name")
+	nameLabel.Styler(func(s *styles.Style) {
+		s.SetTextWrap(false)
+	})
+	NewTextField(grid).SetText("widget-base")
+	label := NewText(grid).SetText("Children")
+	label.Styler(func(s *styles.Style) {
+		s.SetTextWrap(false)
+	})
+	fr := NewFrame(grid)
+	fr.Styler(func(s *styles.Style) {
+		s.Justify.Content = styles.Center
+		s.Align.Items = styles.Center
+		s.Background = colors.Scheme.Select.Container
+	})
+	tx := NewText(fr).SetText("0 nodes").SetType(TextLabelLarge)
+	tx.Styler(func(s *styles.Style) {
+		s.SetTextWrap(false)
+	})
+	b.AssertRender(t, "render/grid-centered-frame")
+}
+
+// For https://github.com/cogentcore/core/issues/1034
+func TestRenderParentGradient(t *testing.T) {
+	b := NewBody()
+	b.Styler(func(s *styles.Style) {
+		s.Direction = styles.Row
+		s.Background = gradient.NewLinear().AddStop(colors.White, 0).AddStop(colors.Black, 1)
+	})
+	for range 3 {
+		NewFrame(b).Styler(func(s *styles.Style) {
+			s.Min.Set(units.Em(2))
+		})
+	}
+	b.AssertRender(t, "render/parent-gradient")
 }

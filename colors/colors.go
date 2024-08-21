@@ -11,6 +11,7 @@ package colors
 import (
 	"errors"
 	"fmt"
+	"image"
 	"image/color"
 	"strconv"
 	"strings"
@@ -230,22 +231,29 @@ func FromString(str string, base ...color.Color) (color.RGBA, error) {
 }
 
 // FromAny returns a color from the given value of any type.
-// It handles values of types string and [color.Color].
-// It takes an optional base color for relative transformations
+// It handles values of types string, [color.Color], [*color.Color],
+// [image.Image], and [*image.Image]. It takes an optional base color
+// for relative transformations
 // (see [FromString]).
 func FromAny(val any, base ...color.Color) (color.RGBA, error) {
-	switch valv := val.(type) {
+	switch vv := val.(type) {
 	case string:
-		return FromString(valv, base...)
+		return FromString(vv, base...)
 	case color.Color:
-		return AsRGBA(valv), nil
+		return AsRGBA(vv), nil
+	case *color.Color:
+		return AsRGBA(*vv), nil
+	case image.Image:
+		return ToUniform(vv), nil
+	case *image.Image:
+		return ToUniform(*vv), nil
 	default:
 		return color.RGBA{}, fmt.Errorf("colors.FromAny: could not get color from value %v of type %T", val, val)
 	}
 }
 
-// FromHex parses the given hex color string
-// and returns the resulting color.
+// FromHex parses the given non-alpha-premultiplied hex color string
+// and returns the resulting alpha-premultiplied color.
 func FromHex(hex string) (color.RGBA, error) {
 	hex = strings.TrimPrefix(hex, "#")
 	var r, g, b, a int
@@ -265,11 +273,11 @@ func FromHex(hex string) (color.RGBA, error) {
 	} else {
 		return color.RGBA{}, fmt.Errorf("colors.FromHex: could not process %q", hex)
 	}
-	return color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)}, nil
+	return AsRGBA(color.NRGBA{uint8(r), uint8(g), uint8(b), uint8(a)}), nil
 }
 
-// AsHex returns the color as a standard
-// 2-hexadecimal-digits-per-component string
+// AsHex returns the color as a standard 2-hexadecimal-digits-per-component
+// non-alpha-premultiplied hex color string.
 func AsHex(c color.Color) string {
 	if c == nil {
 		return "nil"

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"cogentcore.org/core/base/errors"
+	"cogentcore.org/core/base/fileinfo"
 	"cogentcore.org/core/base/strcase"
 	"cogentcore.org/core/colors"
 	"cogentcore.org/core/core"
@@ -24,6 +25,7 @@ import (
 	"cogentcore.org/core/styles/states"
 	"cogentcore.org/core/styles/units"
 	"cogentcore.org/core/texteditor"
+	"cogentcore.org/core/tree"
 )
 
 //go:embed demo.go
@@ -35,8 +37,8 @@ func main() {
 
 	home(ts)
 	widgets(ts)
-	views(ts)
-	values(ts)
+	collections(ts)
+	valueBinding(ts)
 	makeStyles(ts)
 
 	b.RunMainWindow()
@@ -51,7 +53,7 @@ func home(ts *core.Tabs) {
 	errors.Log(core.NewSVG(tab).ReadString(core.AppIcon))
 
 	core.NewText(tab).SetType(core.TextDisplayLarge).SetText("The Cogent Core Demo")
-	core.NewText(tab).SetType(core.TextTitleLarge).SetText(core.AppAbout)
+	core.NewText(tab).SetType(core.TextTitleLarge).SetText(`A <b>demonstration</b> of the <i>various</i> features of the <a href="https://cogentcore.org/core">Cogent Core</a> 2D and 3D Go GUI <u>framework</u>`)
 }
 
 func widgets(ts *core.Tabs) {
@@ -62,7 +64,7 @@ func widgets(ts *core.Tabs) {
 	inputs(wts)
 	sliders(wts)
 	dialogs(wts)
-	makeIcons(wts)
+	textEditors(wts)
 }
 
 func text(ts *core.Tabs) {
@@ -93,15 +95,10 @@ func buttons(ts *core.Tabs) {
 
 	core.NewText(tab).SetText("Cogent Core provides customizable buttons that support various events and can be styled in any way you want. Also, there are pre-configured style types for buttons that allow you to achieve common functionality with ease. All buttons support any combination of text, an icon, and an indicator.")
 
-	core.NewText(tab).SetType(core.TextHeadlineSmall).SetText("Standard buttons")
-	brow := makeRow(tab)
-	browt := makeRow(tab)
-	browi := makeRow(tab)
-
-	core.NewText(tab).SetType(core.TextHeadlineSmall).SetText("Menu buttons")
-	mbrow := makeRow(tab)
-	mbrowt := makeRow(tab)
-	mbrowi := makeRow(tab)
+	rowm := makeRow(tab)
+	rowti := makeRow(tab)
+	rowt := makeRow(tab)
+	rowi := makeRow(tab)
 
 	menu := func(m *core.Scene) {
 		m1 := core.NewButton(m).SetText("Menu Item 1").SetIcon(icons.Save).SetShortcut("Control+Shift+1")
@@ -134,7 +131,6 @@ func buttons(ts *core.Tabs) {
 		icons.Search, icons.Home, icons.Close, icons.Done, icons.Favorite, icons.PlayArrow,
 		icons.Add, icons.Delete, icons.ArrowBack, icons.Info, icons.Refresh, icons.VideoCall,
 		icons.Menu, icons.Settings, icons.AccountCircle, icons.Download, icons.Sort, icons.DateRange,
-		icons.Undo, icons.OpenInFull, icons.IosShare, icons.LibraryAdd, icons.OpenWith,
 	}
 
 	for _, typ := range core.ButtonTypesValues() {
@@ -150,32 +146,26 @@ func buttons(ts *core.Tabs) {
 			art = "An "
 		}
 
-		b := core.NewButton(brow).SetType(typ).SetText(s).SetIcon(ics[typ]).
-			SetTooltip("A standard " + sl + " button with text and an icon")
+		core.NewButton(rowm).SetType(typ).SetText(s).SetIcon(ics[typ]).SetMenu(menu).
+			SetTooltip(art + sl + " menu button with text and an icon")
+
+		b := core.NewButton(rowti).SetType(typ).SetText(s).SetIcon(ics[typ+6]).
+			SetTooltip("A " + sl + " button with text and an icon")
 		b.OnClick(func(e events.Event) {
 			fmt.Println("Got click event on", b.Name)
 		})
 
-		bt := core.NewButton(browt).SetType(typ).SetText(s).
-			SetTooltip("A standard " + sl + " button with text")
+		bt := core.NewButton(rowt).SetType(typ).SetText(s).
+			SetTooltip("A " + sl + " button with text")
 		bt.OnClick(func(e events.Event) {
 			fmt.Println("Got click event on", bt.Name)
 		})
 
-		bi := core.NewButton(browi).SetType(typ).SetIcon(ics[typ+5]).
-			SetTooltip("A standard " + sl + " button with an icon")
+		bi := core.NewButton(rowi).SetType(typ).SetIcon(ics[typ+12]).
+			SetTooltip("A " + sl + " button with an icon")
 		bi.OnClick(func(e events.Event) {
 			fmt.Println("Got click event on", bi.Name)
 		})
-
-		core.NewButton(mbrow).SetType(typ).SetText(s).SetIcon(ics[typ+10]).SetMenu(menu).
-			SetTooltip(art + sl + " menu button with text and an icon")
-
-		core.NewButton(mbrowt).SetType(typ).SetText(s).SetMenu(menu).
-			SetTooltip(art + sl + " menu button with text")
-
-		core.NewButton(mbrowi).SetType(typ).SetIcon(ics[typ+15]).SetMenu(menu).
-			SetTooltip(art + sl + " menu button with an icon")
 	}
 }
 
@@ -186,21 +176,9 @@ func inputs(ts *core.Tabs) {
 	core.NewText(tab).SetText("Cogent Core provides various customizable input widgets that cover all common uses. Various events can be bound to inputs, and their data can easily be fetched and used wherever needed. There are also pre-configured style types for most inputs that allow you to easily switch among common styling patterns.")
 
 	core.NewTextField(tab).SetPlaceholder("Text field")
-	core.NewTextField(tab).SetPlaceholder("Email").SetType(core.TextFieldOutlined).Styler(func(s *styles.Style) {
-		s.VirtualKeyboard = styles.KeyboardEmail
-	})
-	core.NewTextField(tab).SetPlaceholder("Phone number").AddClearButton().Styler(func(s *styles.Style) {
-		s.VirtualKeyboard = styles.KeyboardPhone
-	})
-	core.NewTextField(tab).SetPlaceholder("URL").SetType(core.TextFieldOutlined).AddClearButton().Styler(func(s *styles.Style) {
-		s.VirtualKeyboard = styles.KeyboardURL
-	})
 	core.NewTextField(tab).AddClearButton().SetLeadingIcon(icons.Search)
 	core.NewTextField(tab).SetType(core.TextFieldOutlined).SetTypePassword().SetPlaceholder("Password")
-	core.NewTextField(tab).SetText("Multiline textfield with a relatively long initial text").
-		Styler(func(s *styles.Style) {
-			s.SetTextWrap(true)
-		})
+	core.NewTextField(tab).SetText("Text field with relatively long initial text")
 
 	spinners := core.NewFrame(tab)
 
@@ -232,20 +210,16 @@ func inputs(ts *core.Tabs) {
 
 	core.NewSwitches(tab).SetType(core.SwitchChip).SetStrings("Chip 1", "Chip 2", "Chip 3")
 	core.NewSwitches(tab).SetType(core.SwitchCheckbox).SetStrings("Checkbox 1", "Checkbox 2", "Checkbox 3")
-	core.NewSwitches(tab).SetType(core.SwitchCheckbox).SetStrings("Indeterminate 1", "Indeterminate 2", "Indeterminate 3").
-		OnWidgetAdded(func(w core.Widget) { // TODO(config)
-			if sw, ok := w.(*core.Switch); ok {
-				sw.SetState(true, states.Indeterminate)
-			}
-		})
+	cs := core.NewSwitches(tab).SetType(core.SwitchCheckbox).SetStrings("Indeterminate 1", "Indeterminate 2", "Indeterminate 3")
+	cs.SetOnChildAdded(func(n tree.Node) {
+		core.AsWidget(n).SetState(true, states.Indeterminate)
+	})
 
 	core.NewSwitches(tab).SetType(core.SwitchRadioButton).SetMutex(true).SetStrings("Radio Button 1", "Radio Button 2", "Radio Button 3")
-	core.NewSwitches(tab).SetType(core.SwitchRadioButton).SetMutex(true).SetStrings("Indeterminate 1", "Indeterminate 2", "Indeterminate 3").
-		OnWidgetAdded(func(w core.Widget) {
-			if sw, ok := w.(*core.Switch); ok {
-				sw.SetState(true, states.Indeterminate)
-			}
-		})
+	rs := core.NewSwitches(tab).SetType(core.SwitchRadioButton).SetMutex(true).SetStrings("Indeterminate 1", "Indeterminate 2", "Indeterminate 3")
+	rs.SetOnChildAdded(func(n tree.Node) {
+		core.AsWidget(n).SetState(true, states.Indeterminate)
+	})
 
 	core.NewSwitches(tab).SetType(core.SwitchSegmentedButton).SetMutex(true).SetStrings("Segmented Button 1", "Segmented Button 2", "Segmented Button 3")
 }
@@ -277,59 +251,22 @@ func sliders(ts *core.Tabs) {
 }
 
 func textEditors(ts *core.Tabs) {
-	tab := ts.NewTab("Text editor")
+	tab := ts.NewTab("Text editors")
 
 	core.NewText(tab).SetType(core.TextHeadlineLarge).SetText("Text editors")
 	core.NewText(tab).SetText("Cogent Core provides powerful text editors that support advanced code editing features, like syntax highlighting, completion, undo and redo, copy and paste, rectangular selection, and word, line, and page based navigation, selection, and deletion.")
 
 	sp := core.NewSplits(tab)
 
-	errors.Log(texteditor.NewSoloEditor(sp).Buffer.OpenFS(demoFile, "demo.go"))
-	texteditor.NewSoloEditor(sp).Buffer.SetLang("svg").SetTextString(core.AppIcon)
+	errors.Log(texteditor.NewEditor(sp).Buffer.OpenFS(demoFile, "demo.go"))
+	texteditor.NewEditor(sp).Buffer.SetLanguage(fileinfo.Svg).SetString(core.AppIcon)
 }
 
-func makeIcons(ts *core.Tabs) {
-	tab := ts.NewTab("Icons")
+func valueBinding(ts *core.Tabs) {
+	tab := ts.NewTab("Value binding")
 
-	core.NewText(tab).SetType(core.TextHeadlineLarge).SetText("Icons")
-	core.NewText(tab).SetText("Cogent Core provides more than 2,000 unique icons from the Material Symbols collection, allowing you to easily represent many things in a concise, visually pleasing, and language-independent way.")
-
-	core.NewButton(tab).SetText("View icons").OnClick(func(e events.Event) {
-		d := core.NewBody().AddTitle("Cogent Core Icons")
-		grid := core.NewFrame(d)
-		grid.Styler(func(s *styles.Style) {
-			s.Wrap = true
-			s.Overflow.Y = styles.OverflowAuto
-		})
-
-		ics := icons.All()
-		for _, ic := range ics {
-			sic := string(ic)
-			if strings.HasSuffix(sic, "-fill") {
-				continue
-			}
-			vb := core.NewFrame(grid)
-			vb.Styler(func(s *styles.Style) {
-				s.Direction = styles.Column
-				s.Max.X.Em(15) // constraining width exactly gives nice grid-like appearance
-				s.Min.X.Em(15)
-			})
-			core.NewIcon(vb).SetIcon(ic).Styler(func(s *styles.Style) {
-				s.Min.Set(units.Em(4))
-			})
-			core.NewText(vb).SetText(strcase.ToSentence(sic)).Styler(func(s *styles.Style) {
-				s.SetTextWrap(false)
-			})
-		}
-		d.RunFullDialog(tab)
-	})
-}
-
-func values(ts *core.Tabs) {
-	tab := ts.NewTab("Values")
-
-	core.NewText(tab).SetType(core.TextHeadlineLarge).SetText("Values")
-	core.NewText(tab).SetText("Cogent Core provides the value widget system, which allows you to instantly bind Go values to interactive widgets with just a single simple line of code. For example, you can dynamically edit this very GUI right now by clicking the Inspector button below.")
+	core.NewText(tab).SetType(core.TextHeadlineLarge).SetText("Value binding")
+	core.NewText(tab).SetText("Cogent Core provides the value binding system, which allows you to instantly bind Go values to interactive widgets with just a single simple line of code.")
 
 	name := "Gopher"
 	core.Bind(&name, core.NewTextField(tab)).OnChange(func(e events.Event) {
@@ -408,38 +345,38 @@ func hello(firstName string, lastName string, age int, likesGo bool) (greeting s
 	return
 }
 
-func views(ts *core.Tabs) {
-	tab := ts.NewTab("Views")
+func collections(ts *core.Tabs) {
+	tab := ts.NewTab("Collections")
 
-	core.NewText(tab).SetType(core.TextHeadlineLarge).SetText("Views")
-	core.NewText(tab).SetText("Cogent Core provides powerful views that allow you to easily view and edit complex data types like structs, maps, and slices, allowing you to easily create widgets like lists, tables, and forms.")
+	core.NewText(tab).SetType(core.TextHeadlineLarge).SetText("Collections")
+	core.NewText(tab).SetText("Cogent Core provides powerful collection widgets that allow you to easily view and edit complex data types like structs, maps, and slices, allowing you to easily create widgets like lists, tables, and forms.")
 
 	vts := core.NewTabs(tab)
 
 	str := testStruct{
-		Name:   "Go",
-		Cond:   2,
-		Value:  3.1415,
-		Vec:    math32.Vec2(5, 7),
-		Inline: inlineStruct{Value: 3},
-		Cond2: tableStruct{
-			IntField:   22,
-			FloatField: 44.4,
-			StrField:   "fi",
-			File:       "core.go",
+		Name:      "Go",
+		Condition: 2,
+		Value:     3.1415,
+		Vector:    math32.Vec2(5, 7),
+		Inline:    inlineStruct{Value: 3},
+		Condition2: tableStruct{
+			Age:   22,
+			Score: 44.4,
+			Name:  "foo",
+			File:  "core.go",
 		},
-		Things: make([]tableStruct, 2),
-		Stuff:  []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7},
+		Table: make([]tableStruct, 2),
+		List:  []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7},
 	}
 
-	core.NewForm(vts.NewTab("Form")).SetStruct(&str)
+	core.NewForm(vts.NewTab("Forms")).SetStruct(&str)
 
 	sl := make([]string, 50)
 	for i := 0; i < len(sl); i++ {
-		sl[i] = fmt.Sprintf("el: %v", i)
+		sl[i] = fmt.Sprintf("element %d", i)
 	}
 	sl[10] = "this is a particularly long value"
-	core.NewList(vts.NewTab("List")).SetSlice(&sl)
+	core.NewList(vts.NewTab("Lists")).SetSlice(&sl)
 
 	mp := map[string]string{}
 
@@ -447,20 +384,19 @@ func views(ts *core.Tabs) {
 	mp["Python"] = "Slow and duck-typed"
 	mp["C++"] = "Hard to use and slow to compile"
 
-	core.NewKeyedList(vts.NewTab("Keyed list")).SetMap(&mp)
+	core.NewKeyedList(vts.NewTab("Keyed lists")).SetMap(&mp)
 
 	tbl := make([]*tableStruct, 50)
 	for i := range tbl {
-		ts := &tableStruct{IntField: i, FloatField: float32(i) / 10}
+		ts := &tableStruct{Age: i, Score: float32(i) / 10}
 		tbl[i] = ts
 	}
-	tbl[0].StrField = "this is a particularly long field"
-	core.NewTable(vts.NewTab("Table")).SetSlice(&tbl)
+	tbl[0].Name = "this is a particularly long field"
+	core.NewTable(vts.NewTab("Tables")).SetSlice(&tbl)
 
-	sp := core.NewSplits(vts.NewTab("Tree")).SetSplits(0.3, 0.7)
-	tr := core.NewTreeFrame(sp).SetText("Root")
+	sp := core.NewSplits(vts.NewTab("Trees")).SetSplits(0.3, 0.7)
+	tr := core.NewTree(core.NewFrame(sp)).SetText("Root")
 	makeTree(tr, 0)
-	tr.RootSetViewIndex()
 
 	sv := core.NewForm(sp).SetStruct(tr)
 
@@ -469,8 +405,6 @@ func views(ts *core.Tabs) {
 			sv.SetStruct(tr.SelectedNodes[0]).Update()
 		}
 	})
-
-	textEditors(vts)
 }
 
 func makeTree(tr *core.Tree, round int) {
@@ -489,13 +423,13 @@ type tableStruct struct { //types:add
 	Icon icons.Icon
 
 	// an integer field
-	IntField int `default:"2"`
+	Age int `default:"2"`
 
 	// a float field
-	FloatField float32
+	Score float32
 
 	// a string field
-	StrField string
+	Name string
 
 	// a file
 	File core.Filename
@@ -506,30 +440,30 @@ type inlineStruct struct { //types:add
 	// click to show next
 	On bool
 
-	// can u see me?
+	// this is now showing
 	ShowMe string
 
-	// a conditional
-	Cond int
+	// a condition
+	Condition int
 
-	// On and Cond=0
-	Cond1 string
+	// if On && Condition == 0
+	Condition1 string
 
-	// if Cond=0
-	Cond2 tableStruct
+	// if On && Condition <= 1
+	Condition2 tableStruct
 
 	// a value
 	Value float32
 }
 
-func (il *inlineStruct) ShouldShow(field string) bool {
+func (il *inlineStruct) ShouldDisplay(field string) bool {
 	switch field {
-	case "ShowMe", "Cond":
+	case "ShowMe", "Condition":
 		return il.On
-	case "Cond1":
-		return il.On && il.Cond == 0
-	case "Cond2":
-		return il.On && il.Cond <= 1
+	case "Condition1":
+		return il.On && il.Condition == 0
+	case "Condition2":
+		return il.On && il.Condition <= 1
 	}
 	return true
 }
@@ -545,44 +479,47 @@ type testStruct struct { //types:add
 	// click to show next
 	ShowNext bool
 
-	// can u see me?
+	// this is now showing
 	ShowMe string
 
-	// how about that
+	// inline struct
 	Inline inlineStruct `display:"inline"`
 
-	// a conditional
-	Cond int
+	// a condition
+	Condition int
 
-	// if Cond=0
-	Cond1 string
+	// if Condition == 0
+	Condition1 string
 
-	// if Cond>=0
-	Cond2 tableStruct
+	// if Condition >= 0
+	Condition2 tableStruct
 
 	// a value
 	Value float32
 
-	Vec math32.Vector2
+	// a vector
+	Vector math32.Vector2
 
-	Things []tableStruct
+	// a slice of structs
+	Table []tableStruct
 
-	Stuff []float32
+	// a slice of floats
+	List []float32
 
 	// a file
 	File core.Filename
 }
 
-func (ts *testStruct) ShouldShow(field string) bool {
+func (ts *testStruct) ShouldDisplay(field string) bool {
 	switch field {
 	case "Name":
 		return ts.Enum <= core.ButtonElevated
 	case "ShowMe":
 		return ts.ShowNext
-	case "Cond1":
-		return ts.Cond == 0
-	case "Cond2":
-		return ts.Cond >= 0
+	case "Condition1":
+		return ts.Condition == 0
+	case "Condition2":
+		return ts.Condition >= 0
 	}
 	return true
 }
@@ -669,7 +606,7 @@ func dialogs(ts *core.Tabs) {
 		core.NewBody().AddSnackbarText("Files updated").
 			AddSnackbarButton("Refresh", func(e events.Event) {
 				core.MessageSnackbar(cs, "Refreshed files")
-			}).AddSnackbarIcon(icons.Close).NewSnackbar(cs).Run()
+			}).AddSnackbarIcon(icons.Close).RunSnackbar(cs)
 	})
 
 	core.NewText(tab).SetType(core.TextHeadlineSmall).SetText("Windows")
@@ -692,25 +629,20 @@ func makeStyles(ts *core.Tabs) {
 	core.NewText(tab).SetType(core.TextHeadlineLarge).SetText("Styles and layouts")
 	core.NewText(tab).SetText("Cogent Core provides a fully customizable styling and layout system that allows you to easily control the position, size, and appearance of all widgets. You can edit the style properties of the outer frame below.")
 
+	// same as docs advanced styling demo
 	sp := core.NewSplits(tab)
-
-	sv := core.NewForm(sp)
-
+	fm := core.NewForm(sp)
 	fr := core.NewFrame(core.NewFrame(sp)) // can not control layout when directly in splits
-	sv.SetStruct(&fr.Styles)
-
 	fr.Styler(func(s *styles.Style) {
 		s.Background = colors.Scheme.Select.Container
+		s.Grow.Set(1, 1)
 	})
-
-	fr.OnShow(func(e events.Event) {
+	fr.Style() // must style immediately to get correct default values
+	fm.SetStruct(&fr.Styles)
+	fm.OnChange(func(e events.Event) {
 		fr.OverrideStyle = true
-	})
-
-	sv.OnChange(func(e events.Event) {
 		fr.Update()
 	})
-
 	frameSizes := []math32.Vector2{
 		{20, 100},
 		{80, 20},
@@ -718,11 +650,9 @@ func makeStyles(ts *core.Tabs) {
 		{40, 120},
 		{150, 100},
 	}
-
 	for _, sz := range frameSizes {
 		core.NewFrame(fr).Styler(func(s *styles.Style) {
 			s.Min.Set(units.Px(sz.X), units.Px(sz.Y))
-			s.Grow.Set(0, 0)
 			s.Background = colors.Scheme.Primary.Base
 		})
 	}

@@ -28,8 +28,6 @@ import (
 )
 
 func Init() {
-	TheApp.Draw = &Drawer{}
-
 	err := os.Setenv("HOME", "/home/me")
 	if err != nil {
 		slog.Error("error setting home directory", "err", err)
@@ -46,7 +44,6 @@ func Init() {
 	}
 
 	TheApp.SetSystemWindow()
-
 	base.Init(TheApp, &TheApp.App)
 }
 
@@ -87,7 +84,9 @@ func (a *App) SetSystemWindow() {
 	ua := js.Global().Get("navigator").Get("userAgent").String()
 	a.UnderlyingPlatform = UserAgentToOS(ua)
 
+	a.Draw = &Drawer{}
 	a.Resize()
+	a.InitDrawer()
 	a.Event.Window(events.WinShow)
 	a.Event.Window(events.ScreenUpdate)
 	a.Event.Window(events.WinFocus)
@@ -123,7 +122,8 @@ func (a *App) Resize() {
 		system.InitScreenLogicalDPIFunc()
 	}
 
-	w, h := js.Global().Get("innerWidth").Int(), js.Global().Get("innerHeight").Int()
+	vv := js.Global().Get("visualViewport")
+	w, h := vv.Get("width").Int(), vv.Get("height").Int()
 	sz := image.Pt(w, h)
 	a.Scrn.Geometry.Max = sz
 	a.Scrn.PixSize = image.Pt(int(math32.Ceil(float32(sz.X)*a.Scrn.DevicePixelRatio)), int(math32.Ceil(float32(sz.Y)*a.Scrn.DevicePixelRatio)))
@@ -135,21 +135,25 @@ func (a *App) Resize() {
 	canvas.Set("width", a.Scrn.PixSize.X)
 	canvas.Set("height", a.Scrn.PixSize.Y)
 
-	// we need to manually set the style width and height of the canvas
+	// We need to manually set the style width and height of the canvas
 	// instead of using 100vw and 100vh because vw and vh are incorrect on mobile browsers
-	// due to the address bar but innerWidth and innerHeight are correct
+	// due to the address bar but visualViewport.width and height are correct
 	// (see https://stackoverflow.com/questions/43575363/css-100vh-is-too-tall-on-mobile-due-to-browser-ui)
 	//
-	// we also need to divide by the pixel size by the pixel ratio again instead of just using innerWidth
-	// and innerHeight so that there are no rounding errors (CSS supports fractional pixels but HTML doesn't);
-	// these rounding errors lead to blurriness on devices with fractional device pixel ratios
+	// We also need to divide by the pixel size by the pixel ratio again instead of just
+	// using visualViewport.width and height so that there are no rounding errors (CSS
+	// supports fractional pixels but HTML doesn't). These rounding errors lead to blurriness on devices with fractional device pixel ratios
 	// (see https://github.com/cogentcore/core/issues/779 and
 	// https://stackoverflow.com/questions/15661339/how-do-i-fix-blurry-text-in-my-html5-canvas/54027313#54027313)
 	cstyle := canvas.Get("style")
 	cstyle.Set("width", fmt.Sprintf("%gpx", float32(a.Scrn.PixSize.X)/a.Scrn.DevicePixelRatio))
 	cstyle.Set("height", fmt.Sprintf("%gpx", float32(a.Scrn.PixSize.Y)/a.Scrn.DevicePixelRatio))
 
-	a.Draw.Image = image.NewRGBA(image.Rectangle{Max: a.Scrn.PixSize})
+	if a.Draw.wgpu != nil {
+		a.Draw.wgpu.System.Renderer.SetSize(a.Scrn.PixSize)
+	} else {
+		a.Draw.base.Image = image.NewRGBA(image.Rectangle{Max: a.Scrn.PixSize})
+	}
 
 	a.Event.WindowResize()
 }

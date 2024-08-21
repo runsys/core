@@ -20,6 +20,7 @@ import (
 	"cogentcore.org/core/paint"
 	"cogentcore.org/core/styles"
 	"cogentcore.org/core/styles/states"
+	"cogentcore.org/core/styles/units"
 	"cogentcore.org/core/texteditor"
 	"cogentcore.org/core/tree"
 	"golang.org/x/net/html"
@@ -28,24 +29,29 @@ import (
 // ElementHandlers is a map of handler functions for each HTML element
 // type (eg: "button", "input", "p"). It is empty by default, but can be
 // used by anyone in need of behavior different than the default behavior
-// defined in [HandleElement] (for example, for custom elements).
+// defined in [handleElement] (for example, for custom elements).
 // If the handler for an element returns false, then the default behavior
 // for an element is used.
 var ElementHandlers = map[string]func(ctx *Context) bool{}
 
+// BindTextEditor is a function set to [cogentcore.org/core/yaegicore.BindTextEditor]
+// when importing yaegicore, which provides interactive editing functionality for Go
+// code blocks in text editors.
+var BindTextEditor func(ed *texteditor.Editor, parent core.Widget)
+
 // New adds a new widget of the given type to the context parent.
-// It automatically calls [Context.Config] on the resulting widget.
+// It automatically calls [Context.config] on the resulting widget.
 func New[T tree.NodeValue](ctx *Context) *T {
 	parent := ctx.Parent()
 	w := tree.New[T](parent)
-	ctx.Config(any(w).(core.Widget)) // TODO(config): better htmlcore structure with new config paradigm?
+	ctx.config(any(w).(core.Widget)) // TODO: better htmlcore structure with new config paradigm?
 	return w
 }
 
-// HandleElement calls the handler in [ElementHandlers] associated with the current node
+// handleElement calls the handler in [ElementHandlers] associated with the current node
 // using the given context. If there is no handler associated with it, it uses default
 // hardcoded configuration code.
-func HandleElement(ctx *Context) {
+func handleElement(ctx *Context) {
 	tag := ctx.Node.Data
 	h, ok := ElementHandlers[tag]
 	if ok {
@@ -54,8 +60,8 @@ func HandleElement(ctx *Context) {
 		}
 	}
 
-	if slices.Contains(TextTags, tag) {
-		HandleTextTag(ctx)
+	if slices.Contains(textTags, tag) {
+		handleTextTag(ctx)
 		return
 	}
 
@@ -63,7 +69,7 @@ func HandleElement(ctx *Context) {
 	case "script", "title", "meta":
 		// we don't render anything
 	case "link":
-		rel := GetAttr(ctx.Node, "rel")
+		rel := getAttr(ctx.Node, "rel")
 		// TODO(kai/htmlcore): maybe handle preload
 		if rel == "preload" {
 			return
@@ -72,7 +78,7 @@ func HandleElement(ctx *Context) {
 		if rel != "stylesheet" {
 			return
 		}
-		resp, err := Get(ctx, GetAttr(ctx.Node, "href"))
+		resp, err := Get(ctx, getAttr(ctx.Node, "href"))
 		if errors.Log(err) != nil {
 			return
 		}
@@ -81,9 +87,9 @@ func HandleElement(ctx *Context) {
 		if errors.Log(err) != nil {
 			return
 		}
-		ctx.AddStyle(string(b))
+		ctx.addStyle(string(b))
 	case "style":
-		ctx.AddStyle(ExtractText(ctx))
+		ctx.addStyle(ExtractText(ctx))
 	case "body", "main", "div", "section", "nav", "footer", "header", "ol", "ul":
 		w := New[core.Frame](ctx)
 		ctx.NewParent = w
@@ -100,28 +106,66 @@ func HandleElement(ctx *Context) {
 	case "button":
 		New[core.Button](ctx).SetText(ExtractText(ctx))
 	case "h1":
-		HandleText(ctx).SetType(core.TextHeadlineLarge)
+		handleText(ctx).SetType(core.TextDisplaySmall)
 	case "h2":
-		HandleText(ctx).SetType(core.TextHeadlineSmall)
+		handleText(ctx).SetType(core.TextHeadlineMedium)
 	case "h3":
-		HandleText(ctx).SetType(core.TextTitleLarge)
+		handleText(ctx).SetType(core.TextTitleLarge)
 	case "h4":
-		HandleText(ctx).SetType(core.TextTitleMedium)
+		handleText(ctx).SetType(core.TextTitleMedium)
 	case "h5":
-		HandleText(ctx).SetType(core.TextTitleSmall)
+		handleText(ctx).SetType(core.TextTitleSmall)
 	case "h6":
-		HandleText(ctx).SetType(core.TextLabelSmall)
+		handleText(ctx).SetType(core.TextLabelSmall)
 	case "p":
-		HandleText(ctx)
+		handleText(ctx)
 	case "pre":
 		hasCode := ctx.Node.FirstChild != nil && ctx.Node.FirstChild.Data == "code"
-		HandleText(ctx).Styler(func(s *styles.Style) {
-			s.Text.WhiteSpace = styles.WhiteSpacePreWrap
-			if hasCode {
-				s.Background = colors.Scheme.SurfaceContainer
-				s.Border.Radius = styles.BorderRadiusMedium
+		if hasCode {
+			ed := New[texteditor.Editor](ctx)
+			ctx.Node = ctx.Node.FirstChild // go to the code element
+			lang := getLanguage(getAttr(ctx.Node, "class"))
+			if lang != "" {
+				ed.Buffer.SetFileExt(lang)
 			}
-		})
+			ed.Buffer.SetString(ExtractText(ctx))
+			if BindTextEditor != nil && lang == "Go" {
+				ed.Buffer.SpacesToTabs(0, ed.Buffer.NumLines()) // Go uses tabs
+				parent := core.NewFrame(ed.Parent)
+				parent.Styler(func(s *styles.Style) {
+					s.Direction = styles.Column
+					s.Grow.Set(1, 0)
+				})
+				// we inherit our Grow.Y from our first child so that
+				// elements that want to grow can do so
+				parent.SetOnChildAdded(func(n tree.Node) {
+					if _, ok := n.(*core.Body); ok { // Body should not grow
+						return
+					}
+					wb := core.AsWidget(n)
+					if wb.IndexInParent() != 0 {
+						return
+					}
+					wb.FinalStyler(func(s *styles.Style) {
+						parent.Styles.Grow.Y = s.Grow.Y
+					})
+				})
+				BindTextEditor(ed, parent)
+			} else {
+				ed.SetReadOnly(true)
+				ed.Buffer.Options.LineNumbers = false
+				ed.Styler(func(s *styles.Style) {
+					s.Border.Width.Zero()
+					s.MaxBorder.Width.Zero()
+					s.StateLayer = 0
+					s.Background = colors.Scheme.SurfaceContainer
+				})
+			}
+		} else {
+			handleText(ctx).Styler(func(s *styles.Style) {
+				s.Text.WhiteSpace = styles.WhiteSpacePreWrap
+			})
+		}
 	case "li":
 		// if we have a p as our first or second child, which is typical
 		// for markdown-generated HTML, we use it directly for data extraction
@@ -132,7 +176,7 @@ func HandleElement(ctx *Context) {
 			ctx.Node = ctx.Node.FirstChild.NextSibling
 		}
 
-		text := HandleText(ctx)
+		text := handleText(ctx)
 		start := ""
 		if pw, ok := text.Parent.(core.Widget); ok {
 			switch pw.AsTree().Property("tag") {
@@ -155,8 +199,9 @@ func HandleElement(ctx *Context) {
 	case "img":
 		img := New[core.Image](ctx)
 		n := ctx.Node
+		img.SetTooltip(getAttr(n, "alt"))
 		go func() {
-			src := GetAttr(n, "src")
+			src := getAttr(n, "src")
 			resp, err := Get(ctx, src)
 			if errors.Log(err) != nil {
 				return
@@ -170,23 +215,25 @@ func HandleElement(ctx *Context) {
 					slog.Error("error loading image", "url", src, "err", err)
 					return
 				}
+				img.AsyncLock()
 				img.SetImage(im)
 				img.Update()
+				img.AsyncUnlock()
 			}
 		}()
 	case "input":
-		ityp := GetAttr(ctx.Node, "type")
-		val := GetAttr(ctx.Node, "value")
+		ityp := getAttr(ctx.Node, "type")
+		val := getAttr(ctx.Node, "value")
 		switch ityp {
 		case "number":
 			fval := float32(errors.Log1(strconv.ParseFloat(val, 32)))
 			New[core.Spinner](ctx).SetValue(fval)
 		case "checkbox":
 			New[core.Switch](ctx).SetType(core.SwitchCheckbox).
-				SetState(HasAttr(ctx.Node, "checked"), states.Checked)
+				SetState(hasAttr(ctx.Node, "checked"), states.Checked)
 		case "radio":
 			New[core.Switch](ctx).SetType(core.SwitchRadioButton).
-				SetState(HasAttr(ctx.Node, "checked"), states.Checked)
+				SetState(hasAttr(ctx.Node, "checked"), states.Checked)
 		case "range":
 			fval := float32(errors.Log1(strconv.ParseFloat(val, 32)))
 			New[core.Slider](ctx).SetValue(fval)
@@ -210,34 +257,46 @@ func HandleElement(ctx *Context) {
 	}
 }
 
-// HandleText creates a new [core.Text] from the given information, setting the text and
-// the text click function so that URLs are opened according to [Context.OpenURL].
-func HandleText(ctx *Context) *core.Text {
-	lb := New[core.Text](ctx).SetText(ExtractText(ctx))
-	lb.HandleTextClick(func(tl *paint.TextLink) {
-		ctx.OpenURL(tl.URL)
-	})
-	return lb
+func textStyler(s *styles.Style) {
+	s.Margin.SetVertical(units.Em(core.ConstantSpacing(0.25)))
+	// TODO: it would be ideal for htmlcore to automatically save a scale factor
+	// in general and for each domain, that is applied only to page content
+	// scale := float32(1.2)
+	// s.Font.Size.Value *= scale
+	// s.Text.LineHeight.Value *= scale
+	// s.Text.LetterSpacing.Value *= scale
 }
 
-// HandleTextTag creates a new [core.Text] from the given information, setting the text and
+// handleText creates a new [core.Text] from the given information, setting the text and
+// the text click function so that URLs are opened according to [Context.OpenURL].
+func handleText(ctx *Context) *core.Text {
+	tx := New[core.Text](ctx).SetText(ExtractText(ctx))
+	tx.Styler(textStyler)
+	tx.HandleTextClick(func(tl *paint.TextLink) {
+		ctx.OpenURL(tl.URL)
+	})
+	return tx
+}
+
+// handleTextTag creates a new [core.Text] from the given information, setting the text and
 // the text click function so that URLs are opened according to [Context.OpenURL]. Also,
-// it wraps the text with the [NodeString] of the given node, meaning that it
+// it wraps the text with the [nodeString] of the given node, meaning that it
 // should be used for standalone elements that are meant to only exist in text
 // (eg: a, span, b, code, etc).
-func HandleTextTag(ctx *Context) *core.Text {
-	start, end := NodeString(ctx.Node)
+func handleTextTag(ctx *Context) *core.Text {
+	start, end := nodeString(ctx.Node)
 	str := start + ExtractText(ctx) + end
-	lb := New[core.Text](ctx).SetText(str)
-	lb.HandleTextClick(func(tl *paint.TextLink) {
+	tx := New[core.Text](ctx).SetText(str)
+	tx.Styler(textStyler)
+	tx.HandleTextClick(func(tl *paint.TextLink) {
 		ctx.OpenURL(tl.URL)
 	})
-	return lb
+	return tx
 }
 
-// GetAttr gets the given attribute from the given node, returning ""
+// getAttr gets the given attribute from the given node, returning ""
 // if the attribute is not found.
-func GetAttr(n *html.Node, attr string) string {
+func getAttr(n *html.Node, attr string) string {
 	res := ""
 	for _, a := range n.Attr {
 		if a.Key == attr {
@@ -247,24 +306,36 @@ func GetAttr(n *html.Node, attr string) string {
 	return res
 }
 
-// HasAttr returns whether the given node has the given attribute defined.
-func HasAttr(n *html.Node, attr string) bool {
+// hasAttr returns whether the given node has the given attribute defined.
+func hasAttr(n *html.Node, attr string) bool {
 	return slices.ContainsFunc(n.Attr, func(a html.Attribute) bool {
 		return a.Key == attr
 	})
 }
 
-// Get is a helper function that calls [http.Get] with the given URL, parsed
+// getLanguage returns the 'x' in a `language-x` class from the given
+// string of class(es).
+func getLanguage(class string) string {
+	fields := strings.Fields(class)
+	for _, field := range fields {
+		if strings.HasPrefix(field, "language-") {
+			return strings.TrimPrefix(field, "language-")
+		}
+	}
+	return ""
+}
+
+// Get is a helper function that calls [Context.GetURL] with the given URL, parsed
 // relative to the page URL of the given context. It also checks the status
 // code of the response and closes the response body and returns an error if
 // it is not [http.StatusOK]. If the error is nil, then the response body is
 // not closed and must be closed by the caller.
 func Get(ctx *Context, url string) (*http.Response, error) {
-	u, err := ParseRelativeURL(url, ctx.PageURL)
+	u, err := parseRelativeURL(url, ctx.PageURL)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.Get(u.String())
+	resp, err := ctx.GetURL(u.String())
 	if err != nil {
 		return nil, err
 	}

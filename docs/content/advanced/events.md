@@ -1,4 +1,11 @@
-# Events
+## Abilities enable events
+
+First of all, the set of events that a Widget can receive is determined by setting the [[styles/abilities]] flags for that widget.  For example, the [[core.Button]] enables these abilities in its `Styler` function:
+
+```go
+    bt.Styler(func(s *styles.Style) {
+        s.SetAbilities(true, abilities.Activatable, abilities.Focusable, abilities.Hoverable, abilities.DoubleClickable, abilities.TripleClickable)
+```
 
 ## Low-level events
 

@@ -29,13 +29,13 @@ import (
 	"cogentcore.org/core/styles"
 	"cogentcore.org/core/styles/units"
 	"cogentcore.org/core/texteditor"
-	"cogentcore.org/core/texteditor/histyle"
+	"cogentcore.org/core/texteditor/highlighting"
 	"cogentcore.org/core/tree"
 )
 
-// NodeHiStyle is the default style for syntax highlighting to use for
+// NodeHighlighting is the default style for syntax highlighting to use for
 // file node buffers
-var NodeHiStyle = histyle.StyleDefault
+var NodeHighlighting = highlighting.StyleDefault
 
 // Node represents a file in the file system, as a [core.Tree] node.
 // The name of the node is the name of the file.
@@ -59,10 +59,10 @@ type Node struct { //core:embedder
 	// only non-nil if this is the highest-level directory in the tree under vcs control.
 	DirRepo vcs.Repo `edit:"-" set:"-" json:"-" xml:"-" copier:"-"`
 
-	// RepoFiles has the version control system repository file status,
+	// repoFiles has the version control system repository file status,
 	// providing a much faster way to get file status, vs. the repo.Status
 	// call which is exceptionally slow.
-	RepoFiles vcs.Files `edit:"-" set:"-" json:"-" xml:"-" copier:"-"`
+	repoFiles vcs.Files
 }
 
 func (fn *Node) AsFileNode() *Node {
@@ -74,7 +74,7 @@ func (fn *Node) Init() {
 	fn.IconOpen = icons.FolderOpen
 	fn.IconClosed = icons.Folder
 	fn.ContextMenus = nil // do not include tree
-	fn.AddContextMenu(fn.ContextMenu)
+	fn.AddContextMenu(fn.contextMenu)
 	fn.Styler(func(s *styles.Style) {
 		status := fn.Info.VCS
 		switch {
@@ -111,19 +111,19 @@ func (fn *Node) Init() {
 		if !fn.IsReadOnly() && !e.IsHandled() {
 			switch kf {
 			case keymap.Delete:
-				fn.DeleteFiles()
+				fn.deleteFiles()
 				e.SetHandled()
 			case keymap.Backspace:
-				fn.DeleteFiles()
+				fn.deleteFiles()
 				e.SetHandled()
 			case keymap.Duplicate:
-				fn.DuplicateFiles()
+				fn.duplicateFiles()
 				e.SetHandled()
 			case keymap.Insert: // New File
-				core.CallFunc(fn, fn.NewFile)
+				core.CallFunc(fn, fn.newFile)
 				e.SetHandled()
 			case keymap.InsertAfter: // New Folder
-				core.CallFunc(fn, fn.NewFolder)
+				core.CallFunc(fn, fn.newFolder)
 				e.SetHandled()
 			}
 		}
@@ -144,8 +144,6 @@ func (fn *Node) Init() {
 		}
 	})
 	tree.AddChildInit(fn.Parts, "branch", func(w *core.Switch) {
-		w.SetType(core.SwitchCheckbox)
-		w.SetIcons(fn.IconOpen, fn.IconClosed, fn.IconLeaf)
 		tree.AddChildInit(w, "stack", func(w *core.Frame) {
 			f := func(name string) {
 				tree.AddChildInit(w, name, func(w *core.Icon) {
@@ -171,30 +169,24 @@ func (fn *Node) Init() {
 	})
 
 	fn.Updater(func() {
-		fn.SetFileIcon()
+		fn.setFileIcon()
 		if fn.IsDir() {
 			repo, rnode := fn.Repo()
 			if repo != nil && rnode.This == fn.This {
-				go rnode.UpdateRepoFiles()
+				go rnode.updateRepoFiles()
 			}
 		} else {
-			fn.InitFileInfo()
+			fn.initFileInfo()
 		}
 		fn.Text = fn.Info.Name
 	})
 
 	fn.Maker(func(p *tree.Plan) {
-		if fn.Filepath == "" || fn.IsIrregular() {
+		if fn.Filepath == "" {
 			return
 		}
-		if !fn.IsDir() {
-			return
-		}
-		if !((fn.FileRoot.inOpenAll && !fn.Info.IsHidden()) || fn.FileRoot.IsDirOpen(fn.Filepath)) {
-			return
-		}
-		if fn.Name == ExternalFilesName {
-			files := fn.FileRoot.ExternalFiles
+		if fn.Name == externalFilesName {
+			files := fn.FileRoot.externalFiles
 			for _, fi := range files {
 				tree.AddNew(p, fi, func() Filer {
 					return tree.NewOfType(fn.FileRoot.FileNodeType).(Filer)
@@ -209,8 +201,14 @@ func (fn *Node) Init() {
 			}
 			return
 		}
+		if !fn.IsDir() || fn.IsIrregular() {
+			return
+		}
+		if !((fn.FileRoot.inOpenAll && !fn.Info.IsHidden()) || fn.FileRoot.isDirOpen(fn.Filepath)) {
+			return
+		}
 		repo, _ := fn.Repo()
-		files := fn.DirFileList()
+		files := fn.dirFileList()
 		for _, fi := range files {
 			tree.AddNew(p, fi.Name(), func() Filer {
 				return tree.NewOfType(fn.FileRoot.FileNodeType).(Filer)
@@ -219,9 +217,9 @@ func (fn *Node) Init() {
 				w.NeedsLayout()
 				w.FileRoot = fn.FileRoot
 				w.Filepath = core.Filename(filepath.Join(string(fn.Filepath), fi.Name()))
-				w.InitFileInfo()
+				w.initFileInfo()
 				if w.IsDir() && repo == nil {
-					w.DetectVCSRepo(true) // update files
+					w.detectVCSRepo(true) // update files
 				}
 			})
 		}
@@ -238,8 +236,8 @@ func (fn *Node) IsIrregular() bool {
 	return (fn.Info.Mode & os.ModeIrregular) != 0
 }
 
-// IsExternal returns true if file is external to main file tree
-func (fn *Node) IsExternal() bool {
+// isExternal returns true if file is external to main file tree
+func (fn *Node) isExternal() bool {
 	isExt := false
 	fn.WalkUp(func(k tree.Node) bool {
 		sfn := AsNode(k)
@@ -260,37 +258,32 @@ func (fn *Node) IsExec() bool {
 	return fn.Info.IsExec()
 }
 
-// IsOpen returns true if file is flagged as open
-func (fn *Node) IsOpen() bool {
+// isOpen returns true if file is flagged as open
+func (fn *Node) isOpen() bool {
 	return !fn.Closed
-}
-
-// IsChanged returns true if the file is open and has been changed (edited) since last EditDone
-func (fn *Node) IsChanged() bool {
-	return fn.Buffer != nil && fn.Buffer.Changed
 }
 
 // IsNotSaved returns true if the file is open and has been changed (edited) since last Save
 func (fn *Node) IsNotSaved() bool {
-	return fn.Buffer != nil && fn.Buffer.NotSaved
+	return fn.Buffer != nil && fn.Buffer.IsNotSaved()
 }
 
-// IsAutoSave returns true if file is an auto-save file (starts and ends with #)
-func (fn *Node) IsAutoSave() bool {
+// isAutoSave returns true if file is an auto-save file (starts and ends with #)
+func (fn *Node) isAutoSave() bool {
 	return strings.HasPrefix(fn.Info.Name, "#") && strings.HasSuffix(fn.Info.Name, "#")
 }
 
-// MyRelPath returns the relative path from root for this node
-func (fn *Node) MyRelPath() string {
+// RelativePath returns the relative path from root for this node
+func (fn *Node) RelativePath() string {
 	if fn.IsIrregular() || fn.FileRoot == nil {
 		return fn.Name
 	}
 	return fsx.RelativeFilePath(string(fn.Filepath), string(fn.FileRoot.Filepath))
 }
 
-// DirFileList returns the list of files in this directory,
+// dirFileList returns the list of files in this directory,
 // sorted according to DirsOnTop and SortByModTime options
-func (fn *Node) DirFileList() []os.FileInfo {
+func (fn *Node) dirFileList() []os.FileInfo {
 	path := string(fn.Filepath)
 	var files []os.FileInfo
 	var dirs []os.FileInfo // for DirsOnTop mode
@@ -317,7 +310,7 @@ func (fn *Node) DirFileList() []os.FileInfo {
 		}
 		return nil
 	})
-	doModSort := fn.FileRoot.DirSortByModTime(core.Filename(path))
+	doModSort := fn.FileRoot.dirSortByModTime(core.Filename(path))
 	if fn.FileRoot.DirsOnTop {
 		if doModSort {
 			sortByModTime(files) // just sort files, not dirs
@@ -343,22 +336,22 @@ func sortByModTime(files []os.FileInfo) {
 	})
 }
 
-func (fn *Node) SetFileIcon() {
+func (fn *Node) setFileIcon() {
 	ic, hasic := fn.Info.FindIcon()
 	if !hasic {
 		ic = icons.Blank
 	}
 	fn.IconLeaf = ic
-	if bp, ok := fn.Branch(); ok {
-		if bp.IconIndeterminate != ic {
-			bp.SetIcons(icons.FolderOpen, icons.Folder, ic)
-			bp.UpdateTree()
+	if br := fn.Branch; br != nil {
+		if br.IconIndeterminate != ic {
+			br.SetIconOn(icons.FolderOpen).SetIconOff(icons.Folder).SetIconIndeterminate(ic)
+			br.UpdateTree()
 		}
 	}
 }
 
-// InitFileInfo initializes file info
-func (fn *Node) InitFileInfo() error {
+// initFileInfo initializes file info
+func (fn *Node) initFileInfo() error {
 	ls, err := os.Lstat(string(fn.Filepath))
 	if err != nil {
 		return err
@@ -384,7 +377,7 @@ func (fn *Node) InitFileInfo() error {
 		if fn.IsDir() {
 			fn.Info.VCS = vcs.Stored // always
 		} else {
-			rstat := rnode.RepoFiles.Status(repo, string(fn.Filepath))
+			rstat := rnode.repoFiles.Status(repo, string(fn.Filepath))
 			if rstat != fn.Info.VCS {
 				fn.Info.VCS = rstat
 				fn.NeedsRender()
@@ -396,9 +389,9 @@ func (fn *Node) InitFileInfo() error {
 	return nil
 }
 
-// SelectedFunc runsthe given function on all selected nodes in reverse order.
+// SelectedFunc runs the given function on all selected nodes in reverse order.
 func (fn *Node) SelectedFunc(fun func(n *Node)) {
-	sels := fn.SelectedViews()
+	sels := fn.GetSelectedNodes()
 	for i := len(sels) - 1; i >= 0; i-- {
 		sn := AsNode(sels[i])
 		if sn == nil {
@@ -409,46 +402,46 @@ func (fn *Node) SelectedFunc(fun func(n *Node)) {
 }
 
 func (fn *Node) OnOpen() {
-	fn.OpenDir()
+	fn.openDir()
 }
 
 func (fn *Node) OnClose() {
 	if !fn.IsDir() {
 		return
 	}
-	fn.FileRoot.SetDirClosed(fn.Filepath)
+	fn.FileRoot.setDirClosed(fn.Filepath)
 }
 
 func (fn *Node) CanOpen() bool {
 	return fn.HasChildren() || fn.IsDir()
 }
 
-// OpenDir opens given directory node
-func (fn *Node) OpenDir() {
+// openDir opens given directory node
+func (fn *Node) openDir() {
 	if !fn.IsDir() {
 		return
 	}
-	fn.FileRoot.SetDirOpen(fn.Filepath)
+	fn.FileRoot.setDirOpen(fn.Filepath)
 	fn.Update()
 }
 
-// SortBys determines how to sort the selected files in the directory.
+// sortBys determines how to sort the selected files in the directory.
 // Default is alpha by name, optionally can be sorted by modification time.
-func (fn *Node) SortBys(modTime bool) { //types:add
+func (fn *Node) sortBys(modTime bool) { //types:add
 	fn.SelectedFunc(func(sn *Node) {
-		sn.SortBy(modTime)
+		sn.sortBy(modTime)
 	})
 }
 
-// SortBy determines how to sort the files in the directory -- default is alpha by name,
+// sortBy determines how to sort the files in the directory -- default is alpha by name,
 // optionally can be sorted by modification time.
-func (fn *Node) SortBy(modTime bool) {
-	fn.FileRoot.SetDirSortBy(fn.Filepath, modTime)
+func (fn *Node) sortBy(modTime bool) {
+	fn.FileRoot.setDirSortBy(fn.Filepath, modTime)
 	fn.NeedsLayout()
 }
 
-// OpenAll opens all directories under this one
-func (fn *Node) OpenAll() { //types:add
+// openAll opens all directories under this one
+func (fn *Node) openAll() { //types:add
 	fn.FileRoot.inOpenAll = true // causes chaining of opening
 	fn.Tree.OpenAll()
 	fn.FileRoot.inOpenAll = false
@@ -474,25 +467,25 @@ func (fn *Node) OpenBuf() (bool, error) {
 			}
 		})
 	}
-	fn.Buffer.Hi.Style = NodeHiStyle
+	fn.Buffer.SetHighlighting(NodeHighlighting)
 	return true, fn.Buffer.Open(fn.Filepath)
 }
 
-// RemoveFromExterns removes file from list of external files
-func (fn *Node) RemoveFromExterns() { //types:add
+// removeFromExterns removes file from list of external files
+func (fn *Node) removeFromExterns() { //types:add
 	fn.SelectedFunc(func(sn *Node) {
-		if !sn.IsExternal() {
+		if !sn.isExternal() {
 			return
 		}
-		sn.FileRoot.RemoveExternalFile(string(sn.Filepath))
-		sn.CloseBuf()
+		sn.FileRoot.removeExternalFile(string(sn.Filepath))
+		sn.closeBuf()
 		sn.Delete()
 	})
 }
 
-// CloseBuf closes the file in its buffer if it is open.
+// closeBuf closes the file in its buffer if it is open.
 // returns true if closed.
-func (fn *Node) CloseBuf() bool {
+func (fn *Node) closeBuf() bool {
 	if fn.Buffer == nil {
 		return false
 	}
@@ -501,20 +494,20 @@ func (fn *Node) CloseBuf() bool {
 	return true
 }
 
-// RelPath returns the relative path from node for given full path
-func (fn *Node) RelPath(fpath core.Filename) string {
+// RelativePathFrom returns the relative path from node for given full path
+func (fn *Node) RelativePathFrom(fpath core.Filename) string {
 	return fsx.RelativeFilePath(string(fpath), string(fn.Filepath))
 }
 
-// DirsTo opens all the directories above the given filename, and returns the node
+// dirsTo opens all the directories above the given filename, and returns the node
 // for element at given path (can be a file or directory itself -- not opened -- just returned)
-func (fn *Node) DirsTo(path string) (*Node, error) {
+func (fn *Node) dirsTo(path string) (*Node, error) {
 	pth, err := filepath.Abs(path)
 	if err != nil {
 		log.Printf("filetree.Node DirsTo path %v could not be turned into an absolute path: %v\n", path, err)
 		return nil, err
 	}
-	rpath := fn.RelPath(core.Filename(pth))
+	rpath := fn.RelativePathFrom(core.Filename(pth))
 	if rpath == "." {
 		return fn, nil
 	}
@@ -535,8 +528,8 @@ func (fn *Node) DirsTo(path string) (*Node, error) {
 		}
 		sfn := AsNode(sfni)
 		if sfn.IsDir() || i == sz-1 {
-			if i < sz-1 && !sfn.IsOpen() {
-				sfn.OpenDir()
+			if i < sz-1 && !sfn.isOpen() {
+				sfn.openDir()
 			} else {
 				cfn = sfn
 			}

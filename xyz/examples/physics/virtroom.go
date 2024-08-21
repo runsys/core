@@ -129,9 +129,9 @@ func (ev *Env) ConfigScene(se *xyz.Scene) {
 	ev.SceneEditor.Styler(func(s *styles.Style) {
 		se.Background = colors.Scheme.Select.Container
 	})
-	xyz.NewAmbientLight(se, "ambient", 0.3, xyz.DirectSun)
+	xyz.NewAmbient(se, "ambient", 0.3, xyz.DirectSun)
 
-	dir := xyz.NewDirLight(se, "dir", 1, xyz.DirectSun)
+	dir := xyz.NewDirectional(se, "dir", 1, xyz.DirectSun)
 	dir.Pos.Set(0, 2, 1) // default: 0,1,1 = above and behind us (we are at 0,0,X)
 
 	// grtx := xyz.NewTextureFileFS(assets.Content, se, "ground", "ground.png")
@@ -231,8 +231,9 @@ func (ev *Env) GrabEyeImg() { //types:add
 // ViewDepth updates depth bitmap with depth data
 func (ev *Env) ViewDepth(depth []float32) {
 	cmap := colormap.AvailableMaps[string(ev.DepthMap)]
-	ev.DepthImage.Image = image.NewRGBA(image.Rectangle{Max: ev.Camera.Size})
-	world.DepthImage(ev.DepthImage.Image, depth, cmap, &ev.Camera)
+	img := image.NewRGBA(image.Rectangle{Max: ev.Camera.Size})
+	ev.DepthImage.SetImage(img)
+	world.DepthImage(img, depth, cmap, &ev.Camera)
 	ev.DepthImage.NeedsRender()
 }
 
@@ -518,8 +519,6 @@ func (ev *Env) NoGUIRun() {
 	ev.ConfigScene(se)
 	ev.MakeWorld()
 	ev.ConfigView3D(se)
-
-	se.Config()
 
 	img, err := ev.RenderEyeImg()
 	if err == nil {

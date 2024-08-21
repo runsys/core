@@ -10,9 +10,9 @@ The `parse` directory is also home to various other packages including:
 
 # Overview of language support
 
-`parse/lang.go` defines the `Lang` interface, which each supported language implements (at least a nil stub) -- at a minimum the `Parser`, `ParseFile`(which includes just lexing if that is all that is needed), and `HiLine` methods should be implemented, to drive syntax highlighting / coloring / tagging.  Optionally, completion, lookup, etc can be implemented.  See `langs/golang` for a full implementation, and `langs/tex` for a more minimal lex-only case.
+`parse/language.go` defines the `Language` interface, which each supported language implements (at least a nil stub) -- at a minimum the `Parser`, `ParseFile`(which includes just lexing if that is all that is needed), and `HighlightLine` methods should be implemented, to drive syntax highlighting / coloring / tagging.  Optionally, completion, lookup, etc can be implemented.  See `languages/golang` for a full implementation, and `languages/tex` for a more minimal lex-only case.
 
-`parse/langsup.go` has tables of supported languages and their properties, in `LangProperties`.
+`parse/languagesupport.go` has tables of supported languages and their properties, in `LanguageProperties`.
 
 `parse` in general has overall management methods for coordinating the `lex` (lexing) and `parse` parsing steps.
 
@@ -49,7 +49,7 @@ and here are some of the more complicated statements (in Go):
     }
 ```
 
-See the [complete grammar for Go](https://github.com/cogentcore/core/blob/main/parse/langs/golang/go.parsegrammar) for everything, including the lexer rules (at the top).
+See the [complete grammar for Go](https://github.com/cogentcore/core/blob/main/parse/languages/golang/go.parsegrammar) for everything, including the lexer rules (at the top).
 
 While parse is likely to be a lot easier to use than `yacc` and `bison`, the latest version 4 of [ANTLR](https://en.wikipedia.org/wiki/ANTLR) with its `ALL(*)` algorithm sounds like it offers similar abilities to robustly handle intuitive grammars, and is likely more generalizable to a wider range of languages, and is probably faster overall than parse.  *But* parse is much simpler and more transparent in terms of how it actually works (disclaimer: I have no idea whatsoever how ANTLR V4 actually works!  And that's kind of the point..).  Anyone should be able to understand how parse works, and tweak it as needed, etc.  And it operates directly in AST-order, creating the corresponding AST on the fly as it parses, so you can interactively understand what it is doing as it goes along, making it relatively easy to create your grammar (although this process is, in truth, always a bit complicated and never as easy as one might hope).  And parse is fast enough for most uses, taking just a few hundred msec for even relatively large and complex source code, and it processes the entire Go standard library in around 40 sec (on a 2016 Macbook laptop).
 
@@ -97,7 +97,7 @@ You can create arbitrarily long expressions by stringing together sequences of b
 
 1. Each operator must be uniquely recognizable from the soup of tokens, and this critically includes distinguishing unary from binary: e.g., correctly recognizing the binary and unary - signs here: `a - b * -c`  
 
-2. The operators must be organized in *reverse* order of priority, so that the lowest priority operations are factored out first, creating the highest-level, broadest splits of the overall expression (in the Ast tree), and then progressively finer, tighter, inner steps are parsed out.  Thus, for example in this expression:
+2. The operators must be organized in *reverse* order of priority, so that the lowest priority operations are factored out first, creating the highest-level, broadest splits of the overall expression (in the AST tree), and then progressively finer, tighter, inner steps are parsed out.  Thus, for example in this expression:
 
 ```Go
 if a + b * 2 / 7 - 42 > c * d + e / 72

@@ -5,11 +5,11 @@
 package filetree
 
 import (
+	"errors"
 	"fmt"
-	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"syscall"
 
 	"cogentcore.org/core/base/fileinfo"
 	"cogentcore.org/core/base/fsx"
@@ -22,117 +22,41 @@ import (
 type Filer interface { //types:add
 	core.Treer
 
-	// AsFileNode returns the filetree.Node
+	// AsFileNode returns the [Node]
 	AsFileNode() *Node
 
-	// OpenFilesDefault opens selected files with default app for that file type (os defined).
-	// It runs open on Mac, xdg-open on Linux, and start on Windows.
-	OpenFilesDefault()
-
-	// OpenFileDefault opens file with default app for that file type (os defined)
-	// It runs open on Mac, xdg-open on Linux, and start on Windows.
-	OpenFileDefault() error
-
-	// OpenFilesWith opens selected files with user-specified command.
-	OpenFilesWith()
-
-	// OpenFileWith opens file with given command.
-	// does not wait for command to finish in this routine (separate routine Waits)
-	OpenFileWith(command string) error
-
-	// DuplicateFiles makes a copy of selected files
-	DuplicateFiles()
-
-	// DuplicateFile creates a copy of given file -- only works for regular files, not
-	// directories
-	DuplicateFile() error
-
-	// DeleteFiles deletes any selected files or directories. If any directory is selected,
-	// all files and subdirectories in that directory are also deleted.
-	DeleteFiles()
-
-	// DeleteFilesImpl does the actual deletion, no prompts
-	DeleteFilesImpl()
-
-	// DeleteFile deletes this file
-	DeleteFile() error
-
-	// RenameFiles renames any selected files
+	// RenameFiles renames any selected files.
 	RenameFiles()
-
-	// RenameFile renames file to new name
-	RenameFile(newpath string) error
-
-	// NewFiles makes a new file in selected directory
-	NewFiles(filename string, addToVCS bool)
-
-	// NewFile makes a new file in this directory node
-	NewFile(filename string, addToVCS bool)
-
-	// NewFolders makes a new folder in the given selected directory
-	NewFolders(foldername string)
-
-	// NewFolder makes a new folder (directory) in this directory node
-	NewFolder(foldername string)
-
-	// CopyFileToDir copies given file path into node that is a directory.
-	// This does NOT check for overwriting -- that must be done at higher level!
-	CopyFileToDir(filename string, perm os.FileMode)
-
-	// Shows file information about selected file(s)
-	ShowFileInfo()
 }
 
-// check for interface impl
 var _ Filer = (*Node)(nil)
 
 // OpenFilesDefault opens selected files with default app for that file type (os defined).
 // runs open on Mac, xdg-open on Linux, and start on Windows
 func (fn *Node) OpenFilesDefault() { //types:add
 	fn.SelectedFunc(func(sn *Node) {
-		sn.This.(Filer).OpenFileDefault()
+		sn.openFileDefault()
 	})
 }
 
-// OpenFileDefault opens file with default app for that file type (os defined)
+// openFileDefault opens file with default app for that file type (os defined)
 // runs open on Mac, xdg-open on Linux, and start on Windows
-func (fn *Node) OpenFileDefault() error {
+func (fn *Node) openFileDefault() error {
 	core.TheApp.OpenURL("file://" + string(fn.Filepath))
 	return nil
 }
 
-// OpenFilesWith opens selected files with user-specified command.
-func (fn *Node) OpenFilesWith() {
-	fn.SelectedFunc(func(sn *Node) {
-		core.CallFunc(sn, sn.OpenFileWith) // todo: not using interface?
-	})
-}
-
-// OpenFileWith opens file with given command.
-// does not wait for command to finish in this routine (separate routine Waits)
-func (fn *Node) OpenFileWith(command string) error {
-	cmd := exec.Command(command, string(fn.Filepath))
-	err := cmd.Start()
-	go func() {
-		err := cmd.Wait()
-		if err != nil {
-			slog.Error(err.Error())
-		}
-	}()
-	return err
-}
-
-// DuplicateFiles makes a copy of selected files
-func (fn *Node) DuplicateFiles() { //types:add
+// duplicateFiles makes a copy of selected files
+func (fn *Node) duplicateFiles() { //types:add
 	fn.FileRoot.NeedsLayout()
 	fn.SelectedFunc(func(sn *Node) {
-		sn.This.(Filer).DuplicateFile()
+		sn.duplicateFile()
 	})
 }
 
-// DuplicateFile creates a copy of given file -- only works for regular files, not
+// duplicateFile creates a copy of given file -- only works for regular files, not
 // directories
-func (fn *Node) DuplicateFile() error {
+func (fn *Node) duplicateFile() error {
 	_, err := fn.Info.Duplicate()
 	if err == nil && fn.Parent != nil {
 		fnp := AsNode(fn.Parent)
@@ -143,24 +67,24 @@ func (fn *Node) DuplicateFile() error {
 
 // deletes any selected files or directories. If any directory is selected,
 // all files and subdirectories in that directory are also deleted.
-func (fn *Node) DeleteFiles() { //types:add
+func (fn *Node) deleteFiles() { //types:add
 	d := core.NewBody().AddTitle("Delete Files?").
 		AddText("Ok to delete file(s)?  This is not undoable and files are not moving to trash / recycle bin. If any selections are directories all files and subdirectories will also be deleted.")
 	d.AddBottomBar(func(parent core.Widget) {
 		d.AddCancel(parent)
 		d.AddOK(parent).SetText("Delete Files").OnClick(func(e events.Event) {
-			fn.This.(Filer).DeleteFilesImpl()
+			fn.deleteFilesImpl()
 		})
 	})
 	d.RunDialog(fn)
 }
 
-// DeleteFilesImpl does the actual deletion, no prompts
-func (fn *Node) DeleteFilesImpl() {
+// deleteFilesImpl does the actual deletion, no prompts
+func (fn *Node) deleteFilesImpl() {
 	fn.FileRoot.NeedsLayout()
 	fn.SelectedFunc(func(sn *Node) {
 		if !sn.Info.IsDir() {
-			sn.DeleteFile()
+			sn.deleteFile()
 			return
 		}
 		var fns []string
@@ -172,16 +96,16 @@ func (fn *Node) DeleteFilesImpl() {
 				continue
 			}
 			if sn.Buffer != nil {
-				sn.CloseBuf()
+				sn.closeBuf()
 			}
 		}
-		sn.This.(Filer).DeleteFile()
+		sn.deleteFile()
 	})
 }
 
-// DeleteFile deletes this file
-func (fn *Node) DeleteFile() error {
-	if fn.IsExternal() {
+// deleteFile deletes this file
+func (fn *Node) deleteFile() error {
+	if fn.isExternal() {
 		return nil
 	}
 	pari := fn.Parent
@@ -189,7 +113,7 @@ func (fn *Node) DeleteFile() error {
 	if pari != nil {
 		parent = AsNode(pari)
 	}
-	fn.CloseBuf()
+	fn.closeBuf()
 	repo, _ := fn.Repo()
 	var err error
 	if !fn.Info.IsDir() && repo != nil && fn.Info.VCS >= vcs.Stored {
@@ -220,20 +144,20 @@ func (fn *Node) RenameFiles() { //types:add
 
 // RenameFile renames file to new name
 func (fn *Node) RenameFile(newpath string) error { //types:add
-	if fn.IsExternal() {
+	if fn.isExternal() {
 		return nil
 	}
 	root := fn.FileRoot
 	var err error
-	fn.CloseBuf() // invalid after this point
+	fn.closeBuf() // invalid after this point
 	orgpath := fn.Filepath
 	newpath, err = fn.Info.Rename(newpath)
 	if len(newpath) == 0 || err != nil {
 		return err
 	}
 	if fn.IsDir() {
-		if fn.FileRoot.IsDirOpen(orgpath) {
-			fn.FileRoot.SetDirOpen(core.Filename(newpath))
+		if fn.FileRoot.isDirOpen(orgpath) {
+			fn.FileRoot.setDirOpen(core.Filename(newpath))
 		}
 	}
 	repo, _ := fn.Repo()
@@ -245,6 +169,9 @@ func (fn *Node) RenameFile(newpath string) error { //types:add
 		err = repo.Move(string(orgpath), newpath)
 	} else {
 		err = os.Rename(string(orgpath), newpath)
+		if err != nil && errors.Is(err, syscall.ENOENT) { // some kind of bogus error it seems?
+			err = nil
+		}
 	}
 	if err == nil {
 		err = fn.Info.InitFile(newpath)
@@ -265,20 +192,20 @@ func (fn *Node) RenameFile(newpath string) error { //types:add
 	return err
 }
 
-// NewFiles makes a new file in selected directory
-func (fn *Node) NewFiles(filename string, addToVCS bool) { //types:add
+// newFiles makes a new file in selected directory
+func (fn *Node) newFiles(filename string, addToVCS bool) { //types:add
 	done := false
 	fn.SelectedFunc(func(sn *Node) {
 		if !done {
-			sn.This.(Filer).NewFile(filename, addToVCS)
+			sn.newFile(filename, addToVCS)
 			done = true
 		}
 	})
 }
 
-// NewFile makes a new file in this directory node
-func (fn *Node) NewFile(filename string, addToVCS bool) { //types:add
-	if fn.IsExternal() {
+// newFile makes a new file in this directory node
+func (fn *Node) newFile(filename string, addToVCS bool) { //types:add
+	if fn.isExternal() {
 		return
 	}
 	ppath := string(fn.Filepath)
@@ -304,19 +231,19 @@ func (fn *Node) NewFile(filename string, addToVCS bool) { //types:add
 }
 
 // makes a new folder in the given selected directory
-func (fn *Node) NewFolders(foldername string) { //types:add
+func (fn *Node) newFolders(foldername string) { //types:add
 	done := false
 	fn.SelectedFunc(func(sn *Node) {
 		if !done {
-			sn.This.(Filer).NewFolder(foldername)
+			sn.newFolder(foldername)
 			done = true
 		}
 	})
 }
 
-// NewFolder makes a new folder (directory) in this directory node
-func (fn *Node) NewFolder(foldername string) { //types:add
-	if fn.IsExternal() {
+// newFolder makes a new folder (directory) in this directory node
+func (fn *Node) newFolder(foldername string) { //types:add
+	if fn.isExternal() {
 		return
 	}
 	ppath := string(fn.Filepath)
@@ -332,10 +259,10 @@ func (fn *Node) NewFolder(foldername string) { //types:add
 	fn.FileRoot.UpdatePath(ppath)
 }
 
-// CopyFileToDir copies given file path into node that is a directory.
+// copyFileToDir copies given file path into node that is a directory.
 // This does NOT check for overwriting -- that must be done at higher level!
-func (fn *Node) CopyFileToDir(filename string, perm os.FileMode) {
-	if fn.IsExternal() {
+func (fn *Node) copyFileToDir(filename string, perm os.FileMode) {
+	if fn.isExternal() {
 		return
 	}
 	ppath := string(fn.Filepath)
@@ -358,7 +285,7 @@ func (fn *Node) CopyFileToDir(filename string, perm os.FileMode) {
 }
 
 // Shows file information about selected file(s)
-func (fn *Node) ShowFileInfo() { //types:add
+func (fn *Node) showFileInfo() { //types:add
 	fn.SelectedFunc(func(sn *Node) {
 		d := core.NewBody().AddTitle("File info")
 		core.NewForm(d).SetStruct(&sn.Info).SetReadOnly(true)

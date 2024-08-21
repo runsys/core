@@ -18,9 +18,9 @@ import (
 
 	"cogentcore.org/core/base/errors"
 	"cogentcore.org/core/shell"
+	"github.com/cogentcore/yaegi/interp"
+	"github.com/cogentcore/yaegi/stdlib"
 	"github.com/ergochat/readline"
-	"github.com/traefik/yaegi/interp"
-	"github.com/traefik/yaegi/stdlib"
 )
 
 // Interpreter represents one running shell context
@@ -58,8 +58,8 @@ func NewInterpreter(options interp.Options) *Interpreter {
 	options.Stderr = in.Shell.StdIOWrappers.Err
 	options.Stdin = in.Shell.StdIOWrappers.In
 	in.Interp = interp.New(options)
-	in.Interp.Use(stdlib.Symbols)
-	in.Interp.Use(Symbols)
+	errors.Log(in.Interp.Use(stdlib.Symbols))
+	errors.Log(in.Interp.Use(Symbols))
 	in.ImportShell()
 	go in.MonitorSignals()
 	return in
@@ -130,6 +130,8 @@ func (in *Interpreter) RunCode() (reflect.Value, error) {
 			in.Shell.ResetDepth()
 			if !cancelled {
 				in.Shell.AddError(err)
+			} else {
+				in.Shell.Errors = nil
 			}
 			break
 		}
@@ -237,6 +239,7 @@ func (in *Interpreter) Interactive() error {
 		} else if line != "" && !strings.HasPrefix(line, "history") && line != "h" {
 			in.Shell.AddHistory(line)
 		}
+		in.Shell.Errors = nil
 		v, hasPrint, err := in.Eval(line)
 		if err == nil && !hasPrint && v.IsValid() && !v.IsZero() && v.Kind() != reflect.Func {
 			fmt.Println(v.Interface())

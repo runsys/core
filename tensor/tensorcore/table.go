@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"cogentcore.org/core/base/errors"
 	"cogentcore.org/core/base/fileinfo"
 	"cogentcore.org/core/base/fileinfo/mimedata"
 	"cogentcore.org/core/core"
@@ -99,7 +100,7 @@ func (tb *Table) Init() {
 
 		tb.MakeHeader(p)
 		tb.MakeGrid(p, func(p *tree.Plan) {
-			for i := 0; i < tb.VisRows; i++ {
+			for i := 0; i < tb.VisibleRows; i++ {
 				svi.MakeRow(p, i)
 			}
 		})
@@ -144,9 +145,15 @@ func (tb *Table) SetTable(et *table.Table) *Table {
 	return tb
 }
 
-// GoUpdateView updates the display for asynchronous updating from
-// other goroutines.  Also updates indexview (calling Sequential).
-func (tb *Table) GoUpdateView() {
+// SetSlice sets the source table to a [table.NewSliceTable]
+// from the given slice.
+func (tb *Table) SetSlice(sl any) *Table {
+	return tb.SetTable(errors.Log1(table.NewSliceTable(sl)))
+}
+
+// AsyncUpdateTable updates the display for asynchronous updating from
+// other goroutines. Also updates indexview (calling Sequential).
+func (tb *Table) AsyncUpdateTable() {
 	tb.AsyncLock()
 	tb.Table.Sequential()
 	tb.ScrollToIndexNoUpdate(tb.SliceSize - 1)
@@ -165,7 +172,7 @@ func (tb *Table) SetIndexView(ix *table.IndexView) *Table {
 
 	tb.This.(core.Lister).UpdateSliceSize()
 	tb.StartIndex = 0
-	tb.VisRows = tb.MinRows
+	tb.VisibleRows = tb.MinRows
 	if !tb.IsReadOnly() {
 		tb.SelectedIndex = -1
 	}
@@ -217,13 +224,14 @@ func (tb *Table) UpdateMaxWidths() {
 func (tb *Table) MakeHeader(p *tree.Plan) {
 	tree.AddAt(p, "header", func(w *core.Frame) {
 		core.ToolbarStyles(w)
-		w.Styler(func(s *styles.Style) {
+		w.FinalStyler(func(s *styles.Style) {
+			s.Padding.Zero()
 			s.Grow.Set(0, 0)
 			s.Gap.Set(units.Em(0.5)) // matches grid default
 		})
 		w.Maker(func(p *tree.Plan) {
 			if tb.ShowIndexes {
-				tree.AddAt(p, "head-index", func(w *core.Text) { // TODO: is not working
+				tree.AddAt(p, "_head-index", func(w *core.Text) { // TODO: is not working
 					w.SetType(core.TextBodyMedium)
 					w.Styler(func(s *styles.Style) {
 						s.Align.Self = styles.Center
@@ -234,8 +242,10 @@ func (tb *Table) MakeHeader(p *tree.Plan) {
 			for fli := 0; fli < tb.NCols; fli++ {
 				field := tb.Table.Table.ColumnNames[fli]
 				tree.AddAt(p, "head-"+field, func(w *core.Button) {
-					w.SetType(core.ButtonMenu)
-					w.SetText(field)
+					w.SetType(core.ButtonAction)
+					w.Styler(func(s *styles.Style) {
+						s.Justify.Content = styles.Start
+					})
 					w.OnClick(func(e events.Event) {
 						tb.SortSliceAction(fli)
 					})
@@ -245,10 +255,12 @@ func (tb *Table) MakeHeader(p *tree.Plan) {
 						tb.headerWidths[fli] = len(field)
 						if fli == tb.SortIndex {
 							if tb.SortDescending {
-								w.SetIcon(icons.KeyboardArrowDown)
+								w.SetIndicator(icons.KeyboardArrowDown)
 							} else {
-								w.SetIcon(icons.KeyboardArrowUp)
+								w.SetIndicator(icons.KeyboardArrowUp)
 							}
+						} else {
+							w.SetIndicator(icons.Blank)
 						}
 					})
 				})
@@ -331,7 +343,7 @@ func (tb *Table) MakeRow(p *tree.Plan, i int) {
 					}
 					wb.SetReadOnly(tb.IsReadOnly())
 					wb.SetState(invis, states.Invisible)
-					if svi.HasStyleFunc() {
+					if svi.HasStyler() {
 						w.Style()
 					}
 					if invis {
@@ -407,24 +419,24 @@ func (tb *Table) SetColumnTensorDisplay(col int) *TensorDisplay {
 	return ctd
 }
 
-// SliceNewAt inserts a new blank element at given index in the slice -- -1
+// NewAt inserts a new blank element at given index in the slice -- -1
 // means the end
-func (tb *Table) SliceNewAt(idx int) {
-	tb.SliceNewAtSelect(idx)
+func (tb *Table) NewAt(idx int) {
+	tb.NewAtSelect(idx)
 
 	tb.Table.InsertRows(idx, 1)
 
-	tb.SelectIndexAction(idx, events.SelectOne)
+	tb.SelectIndexEvent(idx, events.SelectOne)
 	tb.Update()
 	tb.IndexGrabFocus(idx)
 }
 
-// SliceDeleteAt deletes element at given index from slice
-func (tb *Table) SliceDeleteAt(idx int) {
+// DeleteAt deletes element at given index from slice
+func (tb *Table) DeleteAt(idx int) {
 	if idx < 0 || idx >= tb.SliceSize {
 		return
 	}
-	tb.SliceDeleteAtSelect(idx)
+	tb.DeleteAtSelect(idx)
 	tb.Table.DeleteRows(idx, 1)
 	tb.Update()
 }
@@ -435,25 +447,15 @@ func (tb *Table) SortSliceAction(fldIndex int) {
 	sgh := tb.SliceHeader()
 	_, idxOff := tb.RowWidgetNs()
 
-	ascending := true
-
 	for fli := 0; fli < tb.NCols; fli++ {
 		hdr := sgh.Child(idxOff + fli).(*core.Button)
 		hdr.SetType(core.ButtonAction)
 		if fli == fldIndex {
 			if tb.SortIndex == fli {
 				tb.SortDescending = !tb.SortDescending
-				ascending = !tb.SortDescending
 			} else {
 				tb.SortDescending = false
 			}
-			if ascending {
-				hdr.SetIcon(icons.KeyboardArrowUp)
-			} else {
-				hdr.SetIcon(icons.KeyboardArrowDown)
-			}
-		} else {
-			hdr.SetIcon("none")
 		}
 	}
 
@@ -480,7 +482,7 @@ func (tb *Table) TensorDisplayAction(fldIndex int) {
 	tb.NeedsRender()
 }
 
-func (tb *Table) HasStyleFunc() bool { return false }
+func (tb *Table) HasStyler() bool { return false }
 
 func (tb *Table) StyleRow(w core.Widget, idx, fidx int) {}
 
@@ -535,14 +537,14 @@ func (tb *Table) RowFirstVisWidget(row int) (*core.WidgetBase, bool) {
 		return nil, false
 	}
 	nWidgPerRow, idxOff := tb.RowWidgetNs()
-	sg := tb.SliceGrid()
-	w := sg.Children[row*nWidgPerRow].(core.Widget).AsWidget()
+	lg := tb.ListGrid
+	w := lg.Children[row*nWidgPerRow].(core.Widget).AsWidget()
 	if w.Geom.TotalBBox != (image.Rectangle{}) {
 		return w, true
 	}
 	ridx := nWidgPerRow * row
 	for fli := 0; fli < tb.NCols; fli++ {
-		w := sg.Child(ridx + idxOff + fli).(core.Widget).AsWidget()
+		w := lg.Child(ridx + idxOff + fli).(core.Widget).AsWidget()
 		if w.Geom.TotalBBox != (image.Rectangle{}) {
 			return w, true
 		}
@@ -559,10 +561,10 @@ func (tb *Table) RowGrabFocus(row int) *core.WidgetBase {
 	}
 	nWidgPerRow, idxOff := tb.RowWidgetNs()
 	ridx := nWidgPerRow * row
-	sg := tb.SliceGrid()
+	lg := tb.ListGrid
 	// first check if we already have focus
 	for fli := 0; fli < tb.NCols; fli++ {
-		w := sg.Child(ridx + idxOff + fli).(core.Widget).AsWidget()
+		w := lg.Child(ridx + idxOff + fli).(core.Widget).AsWidget()
 		if w.StateIs(states.Focused) || w.ContainsFocus() {
 			return w
 		}
@@ -570,7 +572,7 @@ func (tb *Table) RowGrabFocus(row int) *core.WidgetBase {
 	tb.InFocusGrab = true
 	defer func() { tb.InFocusGrab = false }()
 	for fli := 0; fli < tb.NCols; fli++ {
-		w := sg.Child(ridx + idxOff + fli).(core.Widget).AsWidget()
+		w := lg.Child(ridx + idxOff + fli).(core.Widget).AsWidget()
 		if w.CanFocus() {
 			w.SetFocusEvent()
 			return w
@@ -584,22 +586,22 @@ func (tb *Table) RowGrabFocus(row int) *core.WidgetBase {
 
 func (tb *Table) SizeFinal() {
 	tb.ListBase.SizeFinal()
-	sg := tb.This.(core.Lister).SliceGrid()
+	lg := tb.ListGrid
 	sh := tb.SliceHeader()
-	sh.WidgetKidsIter(func(i int, kwi core.Widget, kwb *core.WidgetBase) bool {
-		_, sgb := core.AsWidget(sg.Child(i))
+	sh.ForWidgetChildren(func(i int, cw core.Widget, cwb *core.WidgetBase) bool {
+		sgb := core.AsWidget(lg.Child(i))
 		gsz := &sgb.Geom.Size
 		if gsz.Actual.Total.X == 0 {
 			return tree.Continue
 		}
-		ksz := &kwb.Geom.Size
+		ksz := &cwb.Geom.Size
 		ksz.Actual.Total.X = gsz.Actual.Total.X
 		ksz.Actual.Content.X = gsz.Actual.Content.X
 		ksz.Alloc.Total.X = gsz.Alloc.Total.X
 		ksz.Alloc.Content.X = gsz.Alloc.Content.X
 		return tree.Continue
 	})
-	gsz := &sg.Geom.Size
+	gsz := &lg.Geom.Size
 	ksz := &sh.Geom.Size
 	if gsz.Actual.Total.X > 0 {
 		ksz.Actual.Total.X = gsz.Actual.Total.X
@@ -708,8 +710,7 @@ func (tb *Table) PasteAssign(md mimedata.Mimes, idx int) {
 		return
 	}
 	tb.Table.Table.ReadCSVRow(recs[1], tb.Table.Indexes[idx])
-	tb.SendChange()
-	tb.Update()
+	tb.UpdateChange()
 }
 
 // PasteAtIndex inserts object(s) from mime data at (before) given slice index
@@ -727,6 +728,6 @@ func (tb *Table) PasteAtIndex(md mimedata.Mimes, idx int) {
 		tb.Table.Table.ReadCSVRow(rec, rw)
 	}
 	tb.SendChange()
-	tb.SelectIndexAction(idx, events.SelectOne)
+	tb.SelectIndexEvent(idx, events.SelectOne)
 	tb.Update()
 }

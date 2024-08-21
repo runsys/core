@@ -14,14 +14,14 @@ import (
 	"cogentcore.org/core/keymap"
 	"cogentcore.org/core/parse/lexer"
 	"cogentcore.org/core/parse/token"
-	"cogentcore.org/core/texteditor/textbuf"
+	"cogentcore.org/core/texteditor/text"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 //    Complete and Spell
 
-// OfferComplete pops up a menu of possible completions
-func (ed *Editor) OfferComplete() {
+// offerComplete pops up a menu of possible completions
+func (ed *Editor) offerComplete() {
 	if ed.Buffer.Complete == nil || ed.ISearch.On || ed.QReplace.On || ed.IsDisabled() {
 		return
 	}
@@ -45,11 +45,12 @@ func (ed *Editor) OfferComplete() {
 	}
 
 	//	count := ed.Buf.ByteOffs[ed.CursorPos.Ln] + ed.CursorPos.Ch
-	cpos := ed.CharStartPos(ed.CursorPos).ToPoint() // physical location
+	cpos := ed.charStartPos(ed.CursorPos).ToPoint() // physical location
 	cpos.X += 5
 	cpos.Y += 10
-	ed.Buffer.SetByteOffs() // make sure the pos offset is updated!!
-	ed.Buffer.CurrentEditor = ed
+	// ed.Buffer.setByteOffs() // make sure the pos offset is updated!!
+	// todo: why? for above
+	ed.Buffer.currentEditor = ed
 	ed.Buffer.Complete.SrcLn = ed.CursorPos.Ln
 	ed.Buffer.Complete.SrcCh = ed.CursorPos.Ch
 	ed.Buffer.Complete.Show(ed, cpos, s)
@@ -65,7 +66,7 @@ func (ed *Editor) CancelComplete() {
 		return
 	}
 	if ed.Buffer.Complete.Cancel() {
-		ed.Buffer.CurrentEditor = nil
+		ed.Buffer.currentEditor = nil
 	}
 }
 
@@ -86,10 +87,10 @@ func (ed *Editor) Lookup() { //types:add
 		ch = ed.SelectRegion.End.Ch
 	} else {
 		ln = ed.CursorPos.Ln
-		if ed.IsWordEnd(ed.CursorPos) {
+		if ed.isWordEnd(ed.CursorPos) {
 			ch = ed.CursorPos.Ch
 		} else {
-			ch = ed.WordAt().End.Ch
+			ch = ed.wordAt().End.Ch
 		}
 	}
 	ed.Buffer.Complete.SrcLn = ln
@@ -105,18 +106,19 @@ func (ed *Editor) Lookup() { //types:add
 	}
 
 	//	count := ed.Buf.ByteOffs[ed.CursorPos.Ln] + ed.CursorPos.Ch
-	cpos := ed.CharStartPos(ed.CursorPos).ToPoint() // physical location
+	cpos := ed.charStartPos(ed.CursorPos).ToPoint() // physical location
 	cpos.X += 5
 	cpos.Y += 10
-	ed.Buffer.SetByteOffs() // make sure the pos offset is updated!!
-	ed.Buffer.CurrentEditor = ed
+	// ed.Buffer.setByteOffs() // make sure the pos offset is updated!!
+	// todo: why?
+	ed.Buffer.currentEditor = ed
 	ed.Buffer.Complete.Lookup(s, ed.CursorPos.Ln, ed.CursorPos.Ch, ed.Scene, cpos)
 }
 
-// ISpellKeyInput locates the word to spell check based on cursor position and
+// iSpellKeyInput locates the word to spell check based on cursor position and
 // the key input, then passes the text region to SpellCheck
-func (ed *Editor) ISpellKeyInput(kt events.Event) {
-	if !ed.Buffer.IsSpellEnabled(ed.CursorPos) {
+func (ed *Editor) iSpellKeyInput(kt events.Event) {
+	if !ed.Buffer.isSpellEnabled(ed.CursorPos) {
 		return
 	}
 
@@ -127,26 +129,26 @@ func (ed *Editor) ISpellKeyInput(kt events.Event) {
 	switch kf {
 	case keymap.MoveUp:
 		if isDoc {
-			ed.Buffer.SpellCheckLineTag(tp.Ln)
+			ed.Buffer.spellCheckLineTag(tp.Ln)
 		}
 	case keymap.MoveDown:
 		if isDoc {
-			ed.Buffer.SpellCheckLineTag(tp.Ln)
+			ed.Buffer.spellCheckLineTag(tp.Ln)
 		}
 	case keymap.MoveRight:
-		if ed.IsWordEnd(tp) {
-			reg := ed.WordBefore(tp)
-			ed.SpellCheck(reg)
+		if ed.isWordEnd(tp) {
+			reg := ed.wordBefore(tp)
+			ed.spellCheck(reg)
 			break
 		}
 		if tp.Ch == 0 { // end of line
 			tp.Ln--
 			if isDoc {
-				ed.Buffer.SpellCheckLineTag(tp.Ln) // redo prior line
+				ed.Buffer.spellCheckLineTag(tp.Ln) // redo prior line
 			}
 			tp.Ch = ed.Buffer.LineLen(tp.Ln)
-			reg := ed.WordBefore(tp)
-			ed.SpellCheck(reg)
+			reg := ed.wordBefore(tp)
+			ed.spellCheck(reg)
 			break
 		}
 		txt := ed.Buffer.Line(tp.Ln)
@@ -160,47 +162,47 @@ func (ed *Editor) ISpellKeyInput(kt events.Event) {
 		}
 		if atend || core.IsWordBreak(r, rune(-1)) {
 			tp.Ch-- // we are one past the end of word
-			reg := ed.WordBefore(tp)
-			ed.SpellCheck(reg)
+			reg := ed.wordBefore(tp)
+			ed.spellCheck(reg)
 		}
 	case keymap.Enter:
 		tp.Ln--
 		if isDoc {
-			ed.Buffer.SpellCheckLineTag(tp.Ln) // redo prior line
+			ed.Buffer.spellCheckLineTag(tp.Ln) // redo prior line
 		}
 		tp.Ch = ed.Buffer.LineLen(tp.Ln)
-		reg := ed.WordBefore(tp)
-		ed.SpellCheck(reg)
+		reg := ed.wordBefore(tp)
+		ed.spellCheck(reg)
 	case keymap.FocusNext:
 		tp.Ch-- // we are one past the end of word
-		reg := ed.WordBefore(tp)
-		ed.SpellCheck(reg)
+		reg := ed.wordBefore(tp)
+		ed.spellCheck(reg)
 	case keymap.Backspace, keymap.Delete:
-		if ed.IsWordMiddle(ed.CursorPos) {
-			reg := ed.WordAt()
-			ed.SpellCheck(ed.Buffer.Region(reg.Start, reg.End))
+		if ed.isWordMiddle(ed.CursorPos) {
+			reg := ed.wordAt()
+			ed.spellCheck(ed.Buffer.Region(reg.Start, reg.End))
 		} else {
-			reg := ed.WordBefore(tp)
-			ed.SpellCheck(reg)
+			reg := ed.wordBefore(tp)
+			ed.spellCheck(reg)
 		}
 	case keymap.None:
 		if unicode.IsSpace(kt.KeyRune()) || unicode.IsPunct(kt.KeyRune()) && kt.KeyRune() != '\'' { // contractions!
 			tp.Ch-- // we are one past the end of word
-			reg := ed.WordBefore(tp)
-			ed.SpellCheck(reg)
+			reg := ed.wordBefore(tp)
+			ed.spellCheck(reg)
 		} else {
-			if ed.IsWordMiddle(ed.CursorPos) {
-				reg := ed.WordAt()
-				ed.SpellCheck(ed.Buffer.Region(reg.Start, reg.End))
+			if ed.isWordMiddle(ed.CursorPos) {
+				reg := ed.wordAt()
+				ed.spellCheck(ed.Buffer.Region(reg.Start, reg.End))
 			}
 		}
 	}
 }
 
-// SpellCheck offers spelling corrections if we are at a word break or other word termination
+// spellCheck offers spelling corrections if we are at a word break or other word termination
 // and the word before the break is unknown -- returns true if misspelled word found
-func (ed *Editor) SpellCheck(reg *textbuf.Edit) bool {
-	if ed.Buffer.Spell == nil {
+func (ed *Editor) spellCheck(reg *text.Edit) bool {
+	if ed.Buffer.spell == nil {
 		return false
 	}
 	wb := string(reg.ToBytes())
@@ -213,27 +215,27 @@ func (ed *Editor) SpellCheck(reg *textbuf.Edit) bool {
 	reg.Reg.Start.Ch += widx
 	reg.Reg.End.Ch += widx - ld
 
-	sugs, knwn := ed.Buffer.Spell.CheckWord(lwb)
+	sugs, knwn := ed.Buffer.spell.checkWord(lwb)
 	if knwn {
 		ed.Buffer.RemoveTag(reg.Reg.Start, token.TextSpellErr)
 		return false
 	}
 	// fmt.Printf("spell err: %s\n", wb)
-	ed.Buffer.Spell.SetWord(wb, sugs, reg.Reg.Start.Ln, reg.Reg.Start.Ch)
+	ed.Buffer.spell.setWord(wb, sugs, reg.Reg.Start.Ln, reg.Reg.Start.Ch)
 	ed.Buffer.RemoveTag(reg.Reg.Start, token.TextSpellErr)
 	ed.Buffer.AddTagEdit(reg, token.TextSpellErr)
 	return true
 }
 
-// OfferCorrect pops up a menu of possible spelling corrections for word at
+// offerCorrect pops up a menu of possible spelling corrections for word at
 // current CursorPos. If no misspelling there or not in spellcorrect mode
 // returns false
-func (ed *Editor) OfferCorrect() bool {
-	if ed.Buffer.Spell == nil || ed.ISearch.On || ed.QReplace.On || ed.IsDisabled() {
+func (ed *Editor) offerCorrect() bool {
+	if ed.Buffer.spell == nil || ed.ISearch.On || ed.QReplace.On || ed.IsDisabled() {
 		return false
 	}
 	sel := ed.SelectRegion
-	if !ed.SelectWord() {
+	if !ed.selectWord() {
 		ed.SelectRegion = sel
 		return false
 	}
@@ -248,29 +250,29 @@ func (ed *Editor) OfferCorrect() bool {
 	if len(wb) != len(wbn) {
 		return false // SelectWord captures leading whitespace - don't offer if there is leading whitespace
 	}
-	sugs, knwn := ed.Buffer.Spell.CheckWord(wb)
-	if knwn && !ed.Buffer.Spell.IsLastLearned(wb) {
+	sugs, knwn := ed.Buffer.spell.checkWord(wb)
+	if knwn && !ed.Buffer.spell.isLastLearned(wb) {
 		return false
 	}
-	ed.Buffer.Spell.SetWord(wb, sugs, tbe.Reg.Start.Ln, tbe.Reg.Start.Ch)
+	ed.Buffer.spell.setWord(wb, sugs, tbe.Reg.Start.Ln, tbe.Reg.Start.Ch)
 
-	cpos := ed.CharStartPos(ed.CursorPos).ToPoint() // physical location
+	cpos := ed.charStartPos(ed.CursorPos).ToPoint() // physical location
 	cpos.X += 5
 	cpos.Y += 10
-	ed.Buffer.CurrentEditor = ed
-	ed.Buffer.Spell.Show(wb, ed.Scene, cpos)
+	ed.Buffer.currentEditor = ed
+	ed.Buffer.spell.show(wb, ed.Scene, cpos)
 	return true
 }
 
-// CancelCorrect cancels any pending spell correction.
+// cancelCorrect cancels any pending spell correction.
 // Call this when new events have moved beyond any prior correction scenario.
-func (ed *Editor) CancelCorrect() {
-	if ed.Buffer.Spell == nil || ed.ISearch.On || ed.QReplace.On {
+func (ed *Editor) cancelCorrect() {
+	if ed.Buffer.spell == nil || ed.ISearch.On || ed.QReplace.On {
 		return
 	}
 	if !ed.Buffer.Options.SpellCorrect {
 		return
 	}
-	ed.Buffer.CurrentEditor = nil
-	ed.Buffer.Spell.Cancel()
+	ed.Buffer.currentEditor = nil
+	ed.Buffer.spell.cancel()
 }

@@ -92,49 +92,6 @@ func (i *ChooserTypes) UnmarshalText(text []byte) error {
 	return enums.UnmarshalText(i, text, "ChooserTypes")
 }
 
-var _CompleteSignalsValues = []CompleteSignals{0, 1}
-
-// CompleteSignalsN is the highest valid value for type CompleteSignals, plus one.
-const CompleteSignalsN CompleteSignals = 2
-
-var _CompleteSignalsValueMap = map[string]CompleteSignals{`Select`: 0, `Extend`: 1}
-
-var _CompleteSignalsDescMap = map[CompleteSignals]string{0: `CompleteSelect means the user chose one of the possible completions`, 1: `CompleteExtend means user has requested that the seed extend if all completions have a common prefix longer than current seed`}
-
-var _CompleteSignalsMap = map[CompleteSignals]string{0: `Select`, 1: `Extend`}
-
-// String returns the string representation of this CompleteSignals value.
-func (i CompleteSignals) String() string { return enums.String(i, _CompleteSignalsMap) }
-
-// SetString sets the CompleteSignals value from its string representation,
-// and returns an error if the string is invalid.
-func (i *CompleteSignals) SetString(s string) error {
-	return enums.SetString(i, s, _CompleteSignalsValueMap, "CompleteSignals")
-}
-
-// Int64 returns the CompleteSignals value as an int64.
-func (i CompleteSignals) Int64() int64 { return int64(i) }
-
-// SetInt64 sets the CompleteSignals value from an int64.
-func (i *CompleteSignals) SetInt64(in int64) { *i = CompleteSignals(in) }
-
-// Desc returns the description of the CompleteSignals value.
-func (i CompleteSignals) Desc() string { return enums.Desc(i, _CompleteSignalsDescMap) }
-
-// CompleteSignalsValues returns all possible values for the type CompleteSignals.
-func CompleteSignalsValues() []CompleteSignals { return _CompleteSignalsValues }
-
-// Values returns all possible values for the type CompleteSignals.
-func (i CompleteSignals) Values() []enums.Enum { return enums.Values(_CompleteSignalsValues) }
-
-// MarshalText implements the [encoding.TextMarshaler] interface.
-func (i CompleteSignals) MarshalText() ([]byte, error) { return []byte(i.String()), nil }
-
-// UnmarshalText implements the [encoding.TextUnmarshaler] interface.
-func (i *CompleteSignals) UnmarshalText(text []byte) error {
-	return enums.UnmarshalText(i, text, "CompleteSignals")
-}
-
 var _LayoutPassesValues = []LayoutPasses{0, 1, 2}
 
 // LayoutPassesN is the highest valid value for type LayoutPasses, plus one.
@@ -219,6 +176,65 @@ func (i MeterTypes) MarshalText() ([]byte, error) { return []byte(i.String()), n
 // UnmarshalText implements the [encoding.TextUnmarshaler] interface.
 func (i *MeterTypes) UnmarshalText(text []byte) error {
 	return enums.UnmarshalText(i, text, "MeterTypes")
+}
+
+var _sceneFlagsValues = []sceneFlags{0, 1, 2, 3, 4, 5}
+
+// sceneFlagsN is the highest valid value for type sceneFlags, plus one.
+const sceneFlagsN sceneFlags = 6
+
+var _sceneFlagsValueMap = map[string]sceneFlags{`HasShown`: 0, `Updating`: 1, `NeedsRender`: 2, `NeedsLayout`: 3, `ImageUpdated`: 4, `PrefSizing`: 5}
+
+var _sceneFlagsDescMap = map[sceneFlags]string{0: `sceneHasShown is whether this scene has been shown. This is used to ensure that [events.Show] is only sent once.`, 1: `sceneUpdating means the Scene is in the process of sceneUpdating. It is set for any kind of tree-level update. Skip any further update passes until it goes off.`, 2: `sceneNeedsRender is whether anything in the Scene needs to be re-rendered (but not necessarily the whole scene itself).`, 3: `sceneNeedsLayout is whether the Scene needs a new layout pass.`, 4: `sceneImageUpdated indicates that the Scene&#39;s image has been updated e.g., due to a render or a resize. This is reset by the global [RenderWindow] rendering pass, so it knows whether it needs to copy the image up to the GPU or not.`, 5: `scenePrefSizing means that this scene is currently doing a PrefSize computation to compute the size of the scene (for sizing window for example); affects layout size computation only for Over`}
+
+var _sceneFlagsMap = map[sceneFlags]string{0: `HasShown`, 1: `Updating`, 2: `NeedsRender`, 3: `NeedsLayout`, 4: `ImageUpdated`, 5: `PrefSizing`}
+
+// String returns the string representation of this sceneFlags value.
+func (i sceneFlags) String() string { return enums.BitFlagString(i, _sceneFlagsValues) }
+
+// BitIndexString returns the string representation of this sceneFlags value
+// if it is a bit index value (typically an enum constant), and
+// not an actual bit flag value.
+func (i sceneFlags) BitIndexString() string { return enums.String(i, _sceneFlagsMap) }
+
+// SetString sets the sceneFlags value from its string representation,
+// and returns an error if the string is invalid.
+func (i *sceneFlags) SetString(s string) error { *i = 0; return i.SetStringOr(s) }
+
+// SetStringOr sets the sceneFlags value from its string representation
+// while preserving any bit flags already set, and returns an
+// error if the string is invalid.
+func (i *sceneFlags) SetStringOr(s string) error {
+	return enums.SetStringOr(i, s, _sceneFlagsValueMap, "sceneFlags")
+}
+
+// Int64 returns the sceneFlags value as an int64.
+func (i sceneFlags) Int64() int64 { return int64(i) }
+
+// SetInt64 sets the sceneFlags value from an int64.
+func (i *sceneFlags) SetInt64(in int64) { *i = sceneFlags(in) }
+
+// Desc returns the description of the sceneFlags value.
+func (i sceneFlags) Desc() string { return enums.Desc(i, _sceneFlagsDescMap) }
+
+// sceneFlagsValues returns all possible values for the type sceneFlags.
+func sceneFlagsValues() []sceneFlags { return _sceneFlagsValues }
+
+// Values returns all possible values for the type sceneFlags.
+func (i sceneFlags) Values() []enums.Enum { return enums.Values(_sceneFlagsValues) }
+
+// HasFlag returns whether these bit flags have the given bit flag set.
+func (i *sceneFlags) HasFlag(f enums.BitFlag) bool { return enums.HasFlag((*int64)(i), f) }
+
+// SetFlag sets the value of the given flags in these flags to the given value.
+func (i *sceneFlags) SetFlag(on bool, f ...enums.BitFlag) { enums.SetFlag((*int64)(i), on, f...) }
+
+// MarshalText implements the [encoding.TextMarshaler] interface.
+func (i sceneFlags) MarshalText() ([]byte, error) { return []byte(i.String()), nil }
+
+// UnmarshalText implements the [encoding.TextUnmarshaler] interface.
+func (i *sceneFlags) UnmarshalText(text []byte) error {
+	return enums.UnmarshalText(i, text, "sceneFlags")
 }
 
 var _ThemesValues = []Themes{0, 1, 2}
@@ -310,7 +326,7 @@ const SliderTypesN SliderTypes = 2
 
 var _SliderTypesValueMap = map[string]SliderTypes{`Slider`: 0, `Scrollbar`: 1}
 
-var _SliderTypesDescMap = map[SliderTypes]string{0: `SliderSlider indicates a standard, user-controllable slider for setting a numeric value`, 1: `SliderScrollbar indicates a slider acting as a scrollbar for content This sets the`}
+var _SliderTypesDescMap = map[SliderTypes]string{0: `SliderSlider indicates a standard, user-controllable slider for setting a numeric value.`, 1: `SliderScrollbar indicates a slider acting as a scrollbar for content. It has a [Slider.visiblePercent] factor that specifies the percent of the content currently visible, which determines the size of the thumb, and thus the range of motion remaining for the thumb Value ([Slider.visiblePercent] = 1 means thumb is full size, and no remaining range of motion). The content size (inside the margin and padding) determines the outer bounds of the rendered area.`}
 
 var _SliderTypesMap = map[SliderTypes]string{0: `Slider`, 1: `Scrollbar`}
 
@@ -346,6 +362,49 @@ func (i *SliderTypes) UnmarshalText(text []byte) error {
 	return enums.UnmarshalText(i, text, "SliderTypes")
 }
 
+var _SplitsTilesValues = []SplitsTiles{0, 1, 2, 3, 4}
+
+// SplitsTilesN is the highest valid value for type SplitsTiles, plus one.
+const SplitsTilesN SplitsTiles = 5
+
+var _SplitsTilesValueMap = map[string]SplitsTiles{`Span`: 0, `Split`: 1, `FirstLong`: 2, `SecondLong`: 3, `Plus`: 4}
+
+var _SplitsTilesDescMap = map[SplitsTiles]string{0: `Span has a single element spanning the cross dimension, i.e., a vertical span for a horizontal main axis, or a horizontal span for a vertical main axis. It is the only valid value for 1D Splits, where it specifies a single element per split. If all tiles are Span, then a 1D line is generated.`, 1: `Split has a split between elements along the cross dimension, with the first of 2 elements in the first main axis line and the second in the second line.`, 2: `FirstLong has a long span of first element along the first main axis line and a split between the next two elements along the second line, with a split between the two lines. Visually, the splits form a T shape for a horizontal main axis.`, 3: `SecondLong has the first two elements split along the first line, and the third with a long span along the second main axis line, with a split between the two lines. Visually, the splits form an inverted T shape for a horizontal main axis.`, 4: `Plus is arranged like a plus sign + with the main split along the main axis line, and then individual cross-axis splits between the first two and next two elements.`}
+
+var _SplitsTilesMap = map[SplitsTiles]string{0: `Span`, 1: `Split`, 2: `FirstLong`, 3: `SecondLong`, 4: `Plus`}
+
+// String returns the string representation of this SplitsTiles value.
+func (i SplitsTiles) String() string { return enums.String(i, _SplitsTilesMap) }
+
+// SetString sets the SplitsTiles value from its string representation,
+// and returns an error if the string is invalid.
+func (i *SplitsTiles) SetString(s string) error {
+	return enums.SetString(i, s, _SplitsTilesValueMap, "SplitsTiles")
+}
+
+// Int64 returns the SplitsTiles value as an int64.
+func (i SplitsTiles) Int64() int64 { return int64(i) }
+
+// SetInt64 sets the SplitsTiles value from an int64.
+func (i *SplitsTiles) SetInt64(in int64) { *i = SplitsTiles(in) }
+
+// Desc returns the description of the SplitsTiles value.
+func (i SplitsTiles) Desc() string { return enums.Desc(i, _SplitsTilesDescMap) }
+
+// SplitsTilesValues returns all possible values for the type SplitsTiles.
+func SplitsTilesValues() []SplitsTiles { return _SplitsTilesValues }
+
+// Values returns all possible values for the type SplitsTiles.
+func (i SplitsTiles) Values() []enums.Enum { return enums.Values(_SplitsTilesValues) }
+
+// MarshalText implements the [encoding.TextMarshaler] interface.
+func (i SplitsTiles) MarshalText() ([]byte, error) { return []byte(i.String()), nil }
+
+// UnmarshalText implements the [encoding.TextUnmarshaler] interface.
+func (i *SplitsTiles) UnmarshalText(text []byte) error {
+	return enums.UnmarshalText(i, text, "SplitsTiles")
+}
+
 var _StageTypesValues = []StageTypes{0, 1, 2, 3, 4, 5}
 
 // StageTypesN is the highest valid value for type StageTypes, plus one.
@@ -353,7 +412,7 @@ const StageTypesN StageTypes = 6
 
 var _StageTypesValueMap = map[string]StageTypes{`WindowStage`: 0, `DialogStage`: 1, `MenuStage`: 2, `TooltipStage`: 3, `SnackbarStage`: 4, `CompleterStage`: 5}
 
-var _StageTypesDescMap = map[StageTypes]string{0: `WindowStage is a MainStage that displays a Scene in a full window. One of these must be created first, as the primary App contents, and it typically persists throughout. It fills the RenderWindow window. Additional Windows can be created either within the same RenderWin (Mobile) or in separate RenderWindow windows (Desktop, NewWindow).`, 1: `DialogStage is a MainStage that displays Scene in a smaller dialog window on top of a Window, or in its own RenderWindow (on Desktop only). It can be Modal or not.`, 2: `MenuStage is a PopupStage that displays a Scene with Action Widgets overlaid on a MainStage. It is typically Modal and ClickOff, and closes when an Action is selected.`, 3: `TooltipStage is a PopupStage that displays a Scene with extra info overlaid on a MainStage. It is typically ClickOff and not Modal.`, 4: `SnackbarStage is a PopupStage displays a Scene with info and typically an additional optional Action, usually displayed at the bottom. It is typically not ClickOff or Modal, but has a timeout.`, 5: `CompleterStage is a PopupStage that displays a Scene with text completions, spelling corrections, or other such dynamic info. It is typically ClickOff, not Modal, dynamically updating, and closes when something is selected or typing renders it no longer relevant.`}
+var _StageTypesDescMap = map[StageTypes]string{0: `WindowStage is a MainStage that displays a [Scene] in a full window. One of these must be created first, as the primary app content, and it typically persists throughout. It fills the [renderWindow]. Additional windows can be created either within the same [renderWindow] on all platforms or in separate [renderWindow]s on desktop platforms.`, 1: `DialogStage is a MainStage that displays a [Scene] in a smaller dialog window on top of a [WindowStage], or in a full or separate window. It can be [Stage.Modal] or not.`, 2: `MenuStage is a PopupStage that displays a [Scene] typically containing [Button]s overlaid on a MainStage. It is typically [Stage.Modal] and [Stage.ClickOff], and closes when an button is clicked.`, 3: `TooltipStage is a PopupStage that displays a [Scene] with extra text info for a widget overlaid on a MainStage. It is typically [Stage.ClickOff] and not [Stage.Modal].`, 4: `SnackbarStage is a PopupStage that displays a [Scene] with text info and an optional additional button. It is displayed at the bottom of the screen. It is typically not [Stage.ClickOff] or [Stage.Modal], but has a [Stage.Timeout].`, 5: `CompleterStage is a PopupStage that displays a [Scene] with text completion options, spelling corrections, or other such dynamic info. It is typically [Stage.ClickOff], not [Stage.Modal], dynamically updating, and closes when something is selected or typing renders it no longer relevant.`}
 
 var _StageTypesMap = map[StageTypes]string{0: `WindowStage`, 1: `DialogStage`, 2: `MenuStage`, 3: `TooltipStage`, 4: `SnackbarStage`, 5: `CompleterStage`}
 
@@ -394,11 +453,11 @@ var _SwitchTypesValues = []SwitchTypes{0, 1, 2, 3, 4}
 // SwitchTypesN is the highest valid value for type SwitchTypes, plus one.
 const SwitchTypesN SwitchTypes = 5
 
-var _SwitchTypesValueMap = map[string]SwitchTypes{`Switch`: 0, `Chip`: 1, `Checkbox`: 2, `RadioButton`: 3, `SegmentedButton`: 4}
+var _SwitchTypesValueMap = map[string]SwitchTypes{`switch`: 0, `chip`: 1, `checkbox`: 2, `radio-button`: 3, `segmented-button`: 4}
 
 var _SwitchTypesDescMap = map[SwitchTypes]string{0: `SwitchSwitch indicates to display a switch as a switch (toggle slider).`, 1: `SwitchChip indicates to display a switch as chip (like Material Design&#39;s filter chip), which is typically only used in the context of [Switches].`, 2: `SwitchCheckbox indicates to display a switch as a checkbox.`, 3: `SwitchRadioButton indicates to display a switch as a radio button.`, 4: `SwitchSegmentedButton indicates to display a segmented button, which is typically only used in the context of [Switches].`}
 
-var _SwitchTypesMap = map[SwitchTypes]string{0: `Switch`, 1: `Chip`, 2: `Checkbox`, 3: `RadioButton`, 4: `SegmentedButton`}
+var _SwitchTypesMap = map[SwitchTypes]string{0: `switch`, 1: `chip`, 2: `checkbox`, 3: `radio-button`, 4: `segmented-button`}
 
 // String returns the string representation of this SwitchTypes value.
 func (i SwitchTypes) String() string { return enums.String(i, _SwitchTypesMap) }
@@ -432,16 +491,16 @@ func (i *SwitchTypes) UnmarshalText(text []byte) error {
 	return enums.UnmarshalText(i, text, "SwitchTypes")
 }
 
-var _TabTypesValues = []TabTypes{0, 1, 2, 3, 4, 5}
+var _TabTypesValues = []TabTypes{0, 1, 2, 3, 4}
 
 // TabTypesN is the highest valid value for type TabTypes, plus one.
-const TabTypesN TabTypes = 6
+const TabTypesN TabTypes = 5
 
-var _TabTypesValueMap = map[string]TabTypes{`StandardTabs`: 0, `FunctionalTabs`: 1, `NavigationAuto`: 2, `NavigationBar`: 3, `NavigationRail`: 4, `NavigationDrawer`: 5}
+var _TabTypesValueMap = map[string]TabTypes{`StandardTabs`: 0, `FunctionalTabs`: 1, `NavigationAuto`: 2, `NavigationBar`: 3, `NavigationDrawer`: 4}
 
-var _TabTypesDescMap = map[TabTypes]string{0: `StandardTabs indicates to render the standard type of Material Design style tabs.`, 1: `FunctionalTabs indicates to render functional tabs like those in Google Chrome. These tabs take up less space and are the only kind that can be closed. They can also be moved.`, 2: `NavigationAuto indicates to render the tabs as either [NavigationBar], [NavigationRail], or [NavigationDrawer], if [WidgetBase.SizeClass] is [SizeCompact], [SizeMedium], or [SizeExpanded], respectively. NavigationAuto should typically be used instead of one of the specific navigation types for better cross-platform compatability.`, 3: `NavigationBar indicates to render the tabs as a bottom navigation bar with text and icons.`, 4: `NavigationRail indicates to render the tabs as a side navigation rail, which only has icons.`, 5: `NavigationDrawer indicates to render the tabs as a side navigation drawer, which has full text and icons.`}
+var _TabTypesDescMap = map[TabTypes]string{0: `StandardTabs indicates to render the standard type of Material Design style tabs.`, 1: `FunctionalTabs indicates to render functional tabs like those in Google Chrome. These tabs take up less space and are the only kind that can be closed. They will also support being moved at some point.`, 2: `NavigationAuto indicates to render the tabs as either [NavigationBar] or [NavigationDrawer] if [WidgetBase.SizeClass] is [SizeCompact] or not, respectively. NavigationAuto should typically be used instead of one of the specific navigation types for better cross-platform compatability.`, 3: `NavigationBar indicates to render the tabs as a bottom navigation bar with text and icons.`, 4: `NavigationDrawer indicates to render the tabs as a side navigation drawer with text and icons.`}
 
-var _TabTypesMap = map[TabTypes]string{0: `StandardTabs`, 1: `FunctionalTabs`, 2: `NavigationAuto`, 3: `NavigationBar`, 4: `NavigationRail`, 5: `NavigationDrawer`}
+var _TabTypesMap = map[TabTypes]string{0: `StandardTabs`, 1: `FunctionalTabs`, 2: `NavigationAuto`, 3: `NavigationBar`, 4: `NavigationDrawer`}
 
 // String returns the string representation of this TabTypes value.
 func (i TabTypes) String() string { return enums.String(i, _TabTypesMap) }
@@ -523,7 +582,7 @@ const TextFieldTypesN TextFieldTypes = 2
 
 var _TextFieldTypesValueMap = map[string]TextFieldTypes{`Filled`: 0, `Outlined`: 1}
 
-var _TextFieldTypesDescMap = map[TextFieldTypes]string{0: `TextFieldFilled represents a filled TextField with a background color and a bottom border`, 1: `TextFieldOutlined represents an outlined TextField with a border on all sides and no background color`}
+var _TextFieldTypesDescMap = map[TextFieldTypes]string{0: `TextFieldFilled represents a filled [TextField] with a background color and a bottom border.`, 1: `TextFieldOutlined represents an outlined [TextField] with a border on all sides and no background color.`}
 
 var _TextFieldTypesMap = map[TextFieldTypes]string{0: `Filled`, 1: `Outlined`}
 
@@ -557,4 +616,63 @@ func (i TextFieldTypes) MarshalText() ([]byte, error) { return []byte(i.String()
 // UnmarshalText implements the [encoding.TextUnmarshaler] interface.
 func (i *TextFieldTypes) UnmarshalText(text []byte) error {
 	return enums.UnmarshalText(i, text, "TextFieldTypes")
+}
+
+var _widgetFlagsValues = []widgetFlags{0, 1, 2}
+
+// widgetFlagsN is the highest valid value for type widgetFlags, plus one.
+const widgetFlagsN widgetFlags = 3
+
+var _widgetFlagsValueMap = map[string]widgetFlags{`ValueNewWindow`: 0, `NeedsRender`: 1, `FirstRender`: 2}
+
+var _widgetFlagsDescMap = map[widgetFlags]string{0: `widgetValueNewWindow indicates that the dialog of a [Value] should be opened as a new window, instead of a typical full window in the same current window. This is set by [InitValueButton] and handled by [openValueDialog]. This is triggered by holding down the Shift key while clicking on a [Value] button. Certain values such as [FileButton] may set this to true in their [InitValueButton] function.`, 1: `widgetNeedsRender is whether the widget needs to be rendered on the next render iteration.`, 2: `widgetFirstRender indicates that we were the first to render, and pushed our parent&#39;s bounds, which then need to be popped.`}
+
+var _widgetFlagsMap = map[widgetFlags]string{0: `ValueNewWindow`, 1: `NeedsRender`, 2: `FirstRender`}
+
+// String returns the string representation of this widgetFlags value.
+func (i widgetFlags) String() string { return enums.BitFlagString(i, _widgetFlagsValues) }
+
+// BitIndexString returns the string representation of this widgetFlags value
+// if it is a bit index value (typically an enum constant), and
+// not an actual bit flag value.
+func (i widgetFlags) BitIndexString() string { return enums.String(i, _widgetFlagsMap) }
+
+// SetString sets the widgetFlags value from its string representation,
+// and returns an error if the string is invalid.
+func (i *widgetFlags) SetString(s string) error { *i = 0; return i.SetStringOr(s) }
+
+// SetStringOr sets the widgetFlags value from its string representation
+// while preserving any bit flags already set, and returns an
+// error if the string is invalid.
+func (i *widgetFlags) SetStringOr(s string) error {
+	return enums.SetStringOr(i, s, _widgetFlagsValueMap, "widgetFlags")
+}
+
+// Int64 returns the widgetFlags value as an int64.
+func (i widgetFlags) Int64() int64 { return int64(i) }
+
+// SetInt64 sets the widgetFlags value from an int64.
+func (i *widgetFlags) SetInt64(in int64) { *i = widgetFlags(in) }
+
+// Desc returns the description of the widgetFlags value.
+func (i widgetFlags) Desc() string { return enums.Desc(i, _widgetFlagsDescMap) }
+
+// widgetFlagsValues returns all possible values for the type widgetFlags.
+func widgetFlagsValues() []widgetFlags { return _widgetFlagsValues }
+
+// Values returns all possible values for the type widgetFlags.
+func (i widgetFlags) Values() []enums.Enum { return enums.Values(_widgetFlagsValues) }
+
+// HasFlag returns whether these bit flags have the given bit flag set.
+func (i *widgetFlags) HasFlag(f enums.BitFlag) bool { return enums.HasFlag((*int64)(i), f) }
+
+// SetFlag sets the value of the given flags in these flags to the given value.
+func (i *widgetFlags) SetFlag(on bool, f ...enums.BitFlag) { enums.SetFlag((*int64)(i), on, f...) }
+
+// MarshalText implements the [encoding.TextMarshaler] interface.
+func (i widgetFlags) MarshalText() ([]byte, error) { return []byte(i.String()), nil }
+
+// UnmarshalText implements the [encoding.TextUnmarshaler] interface.
+func (i *widgetFlags) UnmarshalText(text []byte) error {
+	return enums.UnmarshalText(i, text, "widgetFlags")
 }

@@ -12,37 +12,45 @@ import (
 	"cogentcore.org/core/icons"
 	"cogentcore.org/core/math32"
 	"cogentcore.org/core/styles"
+	"cogentcore.org/core/styles/units"
 	"cogentcore.org/core/tree"
-	"github.com/anthonynsimon/bild/clone"
 	"golang.org/x/image/draw"
 )
 
-// Image is a widget that renders a static bitmap image.
-// See [styles.ObjectFits] for how to control the image rendering within
+// Image is a widget that renders an [image.Image].
+// See [styles.Style.ObjectFit] to control the image rendering within
 // the allocated size. The default minimum requested size is the pixel
 // size in [units.Dp] units (1/160th of an inch).
 type Image struct {
 	WidgetBase
 
-	// Image is the bitmap image.
-	Image *image.RGBA `xml:"-" json:"-" set:"-"`
+	// Image is the [image.Image].
+	Image image.Image `xml:"-" json:"-"`
 
-	// prevPixels is the cached last rendered image.
-	prevPixels image.Image `xml:"-" json:"-" set:"-"`
+	// prevImage is the cached last [Image.Image].
+	prevImage image.Image
+
+	// prevRenderImage is the cached last rendered image with any transformations applied.
+	prevRenderImage image.Image
 
 	// prevObjectFit is the cached [styles.Style.ObjectFit] of the last rendered image.
-	prevObjectFit styles.ObjectFits `xml:"-" json:"-" set:"-"`
+	prevObjectFit styles.ObjectFits
 
 	// prevSize is the cached allocated size for the last rendered image.
-	prevSize math32.Vector2 `xml:"-" json:"-" set:"-"`
+	prevSize math32.Vector2
 }
+
+func (im *Image) WidgetValue() any { return &im.Image }
 
 func (im *Image) Init() {
 	im.WidgetBase.Init()
 	im.Styler(func(s *styles.Style) {
+		s.ObjectFit = styles.FitContain
 		if im.Image != nil {
 			sz := im.Image.Bounds().Size()
-			s.Min.X.Dp(float32(sz.X))
+			s.Min.X.SetCustom(func(uc *units.Context) float32 {
+				return min(uc.Dp(float32(sz.X)), uc.Pw(95))
+			})
 			s.Min.Y.Dp(float32(sz.Y))
 		}
 	})
@@ -68,13 +76,15 @@ func (im *Image) OpenFS(fsys fs.FS, filename string) error {
 	return nil
 }
 
-// SetImage sets the image to the given image.
-// It copies from the given image into an internal image.
-func (im *Image) SetImage(img image.Image) *Image {
-	im.Image = clone.AsRGBA(img)
-	im.prevPixels = nil
-	im.NeedsRender()
-	return im
+func (im *Image) SizeUp() {
+	im.WidgetBase.SizeUp()
+	if im.Image != nil {
+		sz := &im.Geom.Size
+		obj := math32.FromPoint(im.Image.Bounds().Size())
+		osz := styles.ObjectSizeFromFit(im.Styles.ObjectFit, obj, sz.Actual.Content)
+		sz.Actual.Content = osz
+		sz.setTotalFromContent(&sz.Actual)
+	}
 }
 
 func (im *Image) Render() {
@@ -87,13 +97,14 @@ func (im *Image) Render() {
 	sp := im.Geom.ScrollOffset()
 
 	var rimg image.Image
-	if im.prevPixels != nil && im.Styles.ObjectFit == im.prevObjectFit && im.Geom.Size.Actual.Content == im.prevSize {
-		rimg = im.prevPixels
+	if im.prevImage == im.Image && im.Styles.ObjectFit == im.prevObjectFit && im.Geom.Size.Actual.Content == im.prevSize {
+		rimg = im.prevRenderImage
 	} else {
-		rimg = im.Styles.ResizeImage(im.Image, im.Geom.Size.Actual.Content)
-		im.prevPixels = rimg
+		im.prevImage = im.Image
 		im.prevObjectFit = im.Styles.ObjectFit
 		im.prevSize = im.Geom.Size.Actual.Content
+		rimg = im.Styles.ResizeImage(im.Image, im.Geom.Size.Actual.Content)
+		im.prevRenderImage = rimg
 	}
 	draw.Draw(im.Scene.Pixels, r, rimg, sp, draw.Over)
 }

@@ -8,6 +8,43 @@ package slicesx
 
 import "slices"
 
+// GrowTo increases the slice's capacity, if necessary,
+// so that it can hold at least n elements.
+func GrowTo[S ~[]E, E any](s S, n int) S {
+	if n < 0 {
+		panic("cannot be negative")
+	}
+	if n -= cap(s); n > 0 {
+		s = append(s[:cap(s)], make([]E, n)...)[:len(s)]
+	}
+	return s
+}
+
+// SetLength sets the length of the given slice,
+// re-using and preserving existing values to the extent possible.
+func SetLength[E any](s []E, n int) []E {
+	if len(s) == n {
+		return s
+	}
+	if s == nil {
+		return make([]E, n)
+	}
+	if cap(s) < n {
+		s = GrowTo(s, n)
+	}
+	s = s[:n]
+	return s
+}
+
+// CopyFrom efficiently copies from src into dest, using SetLength
+// to ensure the destination has sufficient capacity, and returns
+// the destination (which may have changed location as a result).
+func CopyFrom[E any](dest []E, src []E) []E {
+	dest = SetLength(dest, len(src))
+	copy(dest, src)
+	return dest
+}
+
 // Move moves the element in the given slice at the given
 // old position to the given new position and returns the
 // resulting slice.
@@ -23,11 +60,12 @@ func Swap[E any](s []E, i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
-// ToAny converts a slice of the given type to a []any slice.
-func ToAny[E any](s []E) []any {
-	as := make([]any, len(s))
+// As converts a slice of the given type to a slice of the other given type.
+// The underlying types of the slice elements must be equivalent.
+func As[F, T any](s []F) []T {
+	as := make([]T, len(s))
 	for i, v := range s {
-		as[i] = v
+		as[i] = any(v).(T)
 	}
 	return as
 }

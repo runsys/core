@@ -14,17 +14,20 @@ import (
 
 // DrawStandardBox draws the CSS standard box model using the given styling information,
 // position, size, and parent actual background. This is used for rendering
-// widgets such as buttons, textfields, etc in a GUI.
+// widgets such as buttons, text fields, etc in a GUI.
 func (pc *Context) DrawStandardBox(st *styles.Style, pos math32.Vector2, size math32.Vector2, pabg image.Image) {
 	if !st.RenderBox {
 		return
 	}
 
-	pos, size = pc.fixBounds(pos, size)
+	encroach, pr := pc.boundsEncroachParent(pos, size)
 	tm := st.TotalMargin().Round()
 	mpos := pos.Add(tm.Pos())
 	msize := size.Sub(tm.Size())
 	radius := st.Border.Radius.Dots()
+	if encroach { // if we encroach, we must limit ourselves to the parent radius
+		radius = radius.Max(pr)
+	}
 
 	if st.ActualBackground == nil {
 		// we need to do this to prevent
@@ -48,7 +51,13 @@ func (pc *Context) DrawStandardBox(st *styles.Style, pos math32.Vector2, size ma
 		// so TODO: maybe come up with a better solution for this.
 		// We need to use raw geom data because we need to clear
 		// any box shadow that may have gone in margin.
-		pc.BlitBox(pos, size, pabg)
+		if encroach { // if we encroach, we must limit ourselves to the parent radius
+			pc.FillStyle.Color = pabg
+			pc.DrawRoundedRectangle(pos.X, pos.Y, size.X, size.Y, radius)
+			pc.Fill()
+		} else {
+			pc.BlitBox(pos, size, pabg)
+		}
 	}
 
 	pc.StrokeStyle.Opacity = st.Opacity
@@ -95,56 +104,43 @@ func (pc *Context) DrawStandardBox(st *styles.Style, pos math32.Vector2, size ma
 
 	// now that we have drawn background color
 	// above, we can draw the border
-	mpos.SetAdd(st.Border.Width.Dots().Pos().MulScalar(0.5))
-	msize.SetSub(st.Border.Width.Dots().Size().MulScalar(0.5))
+	mpos.SetSub(st.Border.Width.Dots().Pos().MulScalar(0.5))
+	msize.SetAdd(st.Border.Width.Dots().Size().MulScalar(0.5))
 	mpos.SetSub(st.Border.Offset.Dots().Pos())
 	msize.SetAdd(st.Border.Offset.Dots().Size())
 	pc.FillStyle.Color = nil
 	pc.DrawBorder(mpos.X, mpos.Y, msize.X, msize.Y, st.Border)
 }
 
-// fixBounds returns a version of the given position and size such that they
-// do not go outside of the parent effective bounds based on their border radius.
-// For each corner, if our corner is outside of the inset effective
-// border radius corner of our parent, we ensure that our border radius is at
-// least as large as that of our parent, thereby ensuring that we do not go
-// outside of our parent effective bounds.
-func (pc *Context) fixBounds(pos, size math32.Vector2) (math32.Vector2, math32.Vector2) {
-	if len(pc.ContentBoundsStack) == 0 {
-		return pos, size
+// boundsEncroachParent returns whether the current box encroaches on the
+// parent bounds, taking into account the parent radius, which is also returned.
+func (pc *Context) boundsEncroachParent(pos, size math32.Vector2) (bool, styles.SideFloats) {
+	if len(pc.BoundsStack) == 0 {
+		return false, styles.SideFloats{}
 	}
 
 	pr := pc.RadiusStack[len(pc.RadiusStack)-1]
 	if styles.SidesAreZero(pr.Sides) {
-		return pos, size
+		return false, pr
 	}
 
-	pbox := pc.ContentBoundsStack[len(pc.ContentBoundsStack)-1]
-	psz := math32.Vector2FromPoint(pbox.Size())
+	pbox := pc.BoundsStack[len(pc.BoundsStack)-1]
+	psz := math32.FromPoint(pbox.Size())
 	pr = ClampBorderRadius(pr, psz.X, psz.Y)
 
-	rect := math32.RectFromPosSizeMax(pos, size)
+	rect := math32.Box2{Min: pos, Max: pos.Add(size)}
 
-	ptop := pbox.Min.Add(image.Pt(int(pr.Top), int(pr.Top)))
-	if rect.Min.X < ptop.X && rect.Min.Y < ptop.Y {
-		rect.Min = ptop
-	}
+	// logic is currently based on consistent radius for all corners
+	radius := max(pr.Top, pr.Left, pr.Right, pr.Bottom)
 
-	pright := pbox.Min.Add(image.Pt(pbox.Size().X-int(pr.Right), int(pr.Right)))
-	if rect.Max.X > pright.X && rect.Min.Y < pright.Y {
-		rect.Min.Y = pright.Y
-		rect.Max.X = pright.X
-	}
+	// each of these is how much the element is encroaching into each
+	// side of the bounding rectangle, within the radius curve.
+	// if the number is negative, then it isn't encroaching at all and can
+	// be ignored.
+	top := radius - (rect.Min.Y - float32(pbox.Min.Y))
+	left := radius - (rect.Min.X - float32(pbox.Min.X))
+	right := radius - (float32(pbox.Max.X) - rect.Max.X)
+	bottom := radius - (float32(pbox.Max.Y) - rect.Max.Y)
 
-	pbottom := pbox.Min.Add(image.Pt(pbox.Size().X-int(pr.Bottom), pbox.Size().Y-int(pr.Bottom)))
-	if rect.Max.X > pbottom.X && rect.Max.Y > pbottom.Y {
-		rect.Max = pbottom
-	}
-
-	pleft := pbox.Min.Add(image.Pt(int(pr.Left), pbox.Size().Y-int(pr.Left)))
-	if rect.Min.X < pleft.X && rect.Max.Y > pleft.Y {
-		rect.Min.X = pleft.X
-		rect.Max.Y = pleft.Y
-	}
-	return math32.Vector2FromPoint(rect.Min), math32.Vector2FromPoint(rect.Size())
+	return top > 0 || left > 0 || right > 0 || bottom > 0, pr
 }

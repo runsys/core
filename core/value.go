@@ -35,14 +35,18 @@ type ValueSetter interface {
 // do something when the widget is bound to the given value.
 type OnBinder interface {
 
-	// OnBind is called when the widget is bound to given value.
-	OnBind(value any)
+	// OnBind is called when the widget is bound to the given value
+	// with the given optional struct tags.
+	OnBind(value any, tags reflect.StructTag)
 }
 
 // Bind binds the given value to the given [Value] such that the values of
 // the two will be linked and updated appropriately after [events.Change] events
-// and during [Widget.UpdateWidget]. It returns the widget to enable method chaining.
-func Bind[T Value](value any, vw T) T {
+// and during [WidgetBase.UpdateWidget]. It returns the widget to enable method chaining.
+// It also accepts an optional [reflect.StructTag], which is used to set properties
+// of certain value widgets.
+func Bind[T Value](value any, vw T, tags ...string) T { //yaegi:add
+	// TODO: make tags be reflect.StructTag once yaegi is fixed to work with that
 	wb := vw.AsWidget()
 	alreadyBound := wb.ValueUpdate != nil
 	wb.ValueUpdate = func() {
@@ -56,31 +60,37 @@ func Bind[T Value](value any, vw T) T {
 		ErrorSnackbar(vw, reflectx.SetRobust(value, vw.WidgetValue()))
 	}
 	if alreadyBound {
-		resetWidgetValue(vw)
+		ResetWidgetValue(vw)
 	}
 	wb.ValueTitle = labels.FriendlyTypeName(reflectx.NonPointerType(reflect.TypeOf(value)))
 	if ob, ok := any(vw).(OnBinder); ok {
-		ob.OnBind(value)
+		tag := reflect.StructTag("")
+		if len(tags) > 0 {
+			tag = reflect.StructTag(tags[0])
+		}
+		ob.OnBind(value, tag)
 	}
 	wb.ValueUpdate() // we update it with the initial value immediately
 	return vw
 }
 
-// If we were already bound to another value previously, we first need to
-// reset the widget value to zero to avoid any issues with the pointer from
-// the old value persisting and being updated. For example, that issue happened
+// ResetWidgetValue resets the [Value] if it was already bound to another value previously.
+// We first need to reset the widget value to zero to avoid any issues with the pointer
+// from the old value persisting and being updated. For example, that issue happened
 // with slice and map pointers persisting in forms when a new struct was set.
-func resetWidgetValue(vw Value) {
+// It should not be called by end-user code; it must be exported since it is referenced
+// in a generic function added to yaegi ([Bind]).
+func ResetWidgetValue(vw Value) {
 	rv := reflect.ValueOf(vw.WidgetValue())
 	if rv.IsValid() && rv.Type().Kind() == reflect.Pointer {
 		rv.Elem().SetZero()
 	}
 }
 
-// JoinValueTitle returns a [WidgetBase.ValueTitle] string composed
+// joinValueTitle returns a [WidgetBase.ValueTitle] string composed
 // of two elements, with a • separator, handling the cases where
 // either or both can be empty.
-func JoinValueTitle(a, b string) string {
+func joinValueTitle(a, b string) string {
 	switch {
 	case a == "":
 		return b
@@ -106,16 +116,16 @@ func InitValueButton(v Value, allowReadOnly bool, make func(d *Body), after ...f
 	}
 	wb.OnClick(func(e events.Event) {
 		if allowReadOnly || !wb.IsReadOnly() {
-			wb.ValueNewWindow = e.HasAnyModifier(key.Shift)
-			OpenValueDialog(v, make, after...)
+			wb.setFlag(e.HasAnyModifier(key.Shift), widgetValueNewWindow)
+			openValueDialog(v, make, after...)
 		}
 	})
 }
 
-// OpenValueDialog opens a new value dialog for the given [Value] using the
+// openValueDialog opens a new value dialog for the given [Value] using the
 // given function for constructing the dialog and the optional given function
 // to call after the dialog is accepted.
-func OpenValueDialog(v Value, make func(d *Body), after ...func()) {
+func openValueDialog(v Value, make func(d *Body), after ...func()) {
 	opv := reflectx.UnderlyingPointer(reflect.ValueOf(v.WidgetValue()))
 	if !opv.IsValid() {
 		return
@@ -136,8 +146,7 @@ func OpenValueDialog(v Value, make func(d *Body), after ...func()) {
 	// OK and Cancel buttons
 	if len(after) == 0 {
 		d.OnClose(func(e events.Event) {
-			wb.SendChange()
-			wb.Update()
+			wb.UpdateChange()
 		})
 	} else {
 		// otherwise, we have to make the bottom bar
@@ -145,13 +154,12 @@ func OpenValueDialog(v Value, make func(d *Body), after ...func()) {
 			d.AddCancel(parent)
 			d.AddOK(parent).OnClick(func(e events.Event) {
 				after[0]()
-				wb.SendChange()
-				wb.Update()
+				wb.UpdateChange()
 			})
 		})
 	}
 
-	if wb.ValueNewWindow {
+	if wb.hasFlag(widgetValueNewWindow) {
 		d.RunWindowDialog(v)
 	} else {
 		d.RunFullDialog(v)

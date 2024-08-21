@@ -45,14 +45,6 @@ type Node interface {
 	// by higher-level types that want to do something.
 	OnAdd()
 
-	// OnChildAdded is called when a node is added to
-	// this node or any of its children. When a node is added to
-	// a tree, it calls [OnAdd] and then this function on each of its parents,
-	// going in order from the closest parent to the furthest parent.
-	// This function does nothing by default, but it can be
-	// implemented by higher-level types that want to do something.
-	OnChildAdded(child Node)
-
 	// Destroy recursively deletes and destroys the node, all of its children,
 	// and all of its children's children, etc. Node types can implement this
 	// to do additional necessary destruction; if they do, they should call
@@ -86,8 +78,14 @@ type Node interface {
 // However, a pointer to a NodeValue type is guaranteed to be a [Node],
 // and a non-pointer version of a [Node] type is guaranteed to be a NodeValue.
 type NodeValue interface {
-	nodeValue()
+
+	// NodeValue should only be implemented by [NodeBase],
+	// and it should not be called. It must be exported due
+	// to a nuance with the way that [reflect.StructOf] works,
+	// which results in panics with embedded structs that have
+	// unexported non-pointer methods.
+	NodeValue()
 }
 
-// NodeBase is the only way to implement [NodeValue].
-func (nb NodeBase) nodeValue() {}
+// NodeValue implements [NodeValue]. It should not be called.
+func (nb NodeBase) NodeValue() {}

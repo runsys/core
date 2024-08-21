@@ -23,7 +23,7 @@ type Body struct { //core:no-new
 
 // NewBody creates a new [Body] that will serve as the content of a [Scene]
 // (e.g., a Window, Dialog, etc). [Body] forms the central region
-// of a [Scene], and has OverflowAuto scrollbars by default.
+// of a [Scene], and has [styles.OverflowAuto] scrollbars by default.
 // It will create its own parent [Scene] at this point, and has wrapper
 // functions to transparently manage everything that the [Scene]
 // typically manages during configuration, so you can usually avoid
@@ -34,9 +34,12 @@ func NewBody(name ...string) *Body {
 	nm := "body"
 	if len(name) > 0 {
 		nm = name[0]
-		if TheApp.Name() == "" {
-			TheApp.SetName(nm)
+	}
+	if TheApp.Name() == "" {
+		if len(name) == 0 {
+			nm = "Cogent Core" // first one is called Cogent Core by default
 		}
+		TheApp.SetName(nm)
 	}
 	if AppearanceSettings.Zoom == 0 {
 		// we load the settings in NewBody so that people can
@@ -45,7 +48,7 @@ func NewBody(name ...string) *Body {
 	}
 	bd.SetName(nm)
 	bd.Title = nm
-	bd.Scene = NewBodyScene(bd)
+	bd.Scene = newBodyScene(bd)
 	return bd
 }
 
@@ -58,8 +61,8 @@ func (bd *Body) Init() {
 	})
 }
 
-// SetTitle sets the title in the [Body], [Scene], [Stage], [RenderWindow], and title widget.
-// This is the one place to change the title for everything.
+// SetTitle sets the title in the [Body], [Scene], [Stage], [renderWindow],
+// and title widget. This is the one place to change the title for everything.
 func (bd *Body) SetTitle(title string) *Body {
 	bd.Name = title
 	bd.Title = title
@@ -68,8 +71,8 @@ func (bd *Body) SetTitle(title string) *Body {
 		bd.Scene.Stage.Title = title
 		win := bd.Scene.RenderWindow()
 		if win != nil {
-			win.SetName(title)
-			win.SetTitle(title)
+			win.setName(title)
+			win.setTitle(title)
 		}
 	}
 	if lb, ok := bd.ChildByName("body-title", 0).(*Text); ok {
@@ -78,8 +81,8 @@ func (bd *Body) SetTitle(title string) *Body {
 	return bd
 }
 
-// AddTitle adds [Text] with the given title, and sets the Title text
-// which will be used by the [Scene] etc.
+// AddTitle adds [Text] with the given title, and sets the [Body.Title]
+// text which will be used by the [Scene] etc.
 func (bd *Body) AddTitle(title string) *Body {
 	bd.SetTitle(title)
 	NewText(bd).SetText(title).SetType(TextHeadlineSmall).SetName("body-title")

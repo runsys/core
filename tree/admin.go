@@ -5,13 +5,11 @@
 package tree
 
 import (
-	"fmt"
 	"reflect"
 	"slices"
 	"strconv"
 	"sync/atomic"
 
-	"cogentcore.org/core/base/errors"
 	"cogentcore.org/core/base/slicesx"
 	"cogentcore.org/core/types"
 )
@@ -21,10 +19,10 @@ import (
 // New returns a new node of the given type with the given optional parent.
 // If the name is unspecified, it defaults to the ID (kebab-case) name of
 // the type, plus the [Node.NumLifetimeChildren] of the parent.
-func New[T NodeValue](parent ...Node) *T {
+func New[T NodeValue](parent ...Node) *T { //yaegi:add
 	n := new(T)
 	ni := any(n).(Node)
-	initNode(ni)
+	InitNode(ni)
 	if len(parent) == 0 {
 		ni.AsTree().SetName(ni.AsTree().NodeType().IDName)
 		return n
@@ -41,29 +39,21 @@ func New[T NodeValue](parent ...Node) *T {
 func NewOfType(typ *types.Type, parent ...Node) Node {
 	if len(parent) == 0 {
 		n := newOfType(typ)
-		initNode(n)
+		InitNode(n)
 		n.AsTree().SetName(n.AsTree().NodeType().IDName)
 		return n
 	}
 	return parent[0].AsTree().NewChild(typ)
 }
 
-// initNode initializes the node.
-func initNode(n Node) {
+// InitNode initializes the node. It should not be called by end-user code.
+// It must be exported since it is referenced in generic functions included in yaegi.
+func InitNode(n Node) {
 	nb := n.AsTree()
 	if nb.This != n {
 		nb.This = n
 		nb.This.Init()
 	}
-}
-
-// checkThis checks that [Node.This] is non-nil.
-// It returns and logs an error otherwise.
-func checkThis(n Node) error {
-	if n.AsTree().This != nil {
-		return nil
-	}
-	return errors.Log(fmt.Errorf("tree.Node %q has nil tree.NodeBase.This; you must use tree.New or New* so that the node is initialized", n.AsTree().Path()))
 }
 
 // SetParent sets the parent of the given node to the given parent node.
@@ -72,14 +62,13 @@ func checkThis(n Node) error {
 // parent's list of children; see [Node.AddChild] for a version that does.
 // It automatically gets the [Node.This] of the parent.
 func SetParent(child Node, parent Node) {
-	n := child.AsTree()
-	n.Parent = parent.AsTree().This
-	setUniqueName(n, false)
+	nb := child.AsTree()
+	nb.Parent = parent.AsTree().This
+	setUniqueName(child, false)
 	child.AsTree().This.OnAdd()
-	n.WalkUpParent(func(pn Node) bool {
-		pn.AsTree().This.OnChildAdded(child)
-		return Continue
-	})
+	if oca := nb.Parent.AsTree().OnChildAdded; oca != nil {
+		oca(child)
+	}
 }
 
 // MoveToParent removes the given node from its current parent

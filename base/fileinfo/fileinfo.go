@@ -77,30 +77,61 @@ type FileInfo struct { //types:add
 	Path string `table:"-"`
 }
 
+// NewFileInfo returns a new FileInfo for given file.
 func NewFileInfo(fname string) (*FileInfo, error) {
 	fi := &FileInfo{}
 	err := fi.InitFile(fname)
 	return fi, err
 }
 
-// InitFile initializes a FileInfo based on a filename -- directly returns
-// filepath.Abs or os.Stat error on the given file.  filename can be anything
-// that works given current directory -- Path will contain the full
-// filepath.Abs path, and Name will be just the filename.
+// NewFileInfoType returns a new FileInfo representing the given file type.
+func NewFileInfoType(ftyp Known) *FileInfo {
+	fi := &FileInfo{}
+	fi.SetType(ftyp)
+	return fi
+}
+
+// InitFile initializes a FileInfo based on a filename, which is
+// updated to full path using filepath.Abs.  Returns error from
+// filepath.Abs and / or os.Stat error on the given file,
+// but file info will be updated based on the filename even if
+// the file does not exist.
 func (fi *FileInfo) InitFile(fname string) error {
 	path, err := filepath.Abs(fname)
-	if err != nil {
-		return err
+	if err == nil {
+		fi.Path = path
+	} else {
+		fi.Path = fname // robust to
 	}
-	fi.Path = path
 	_, fi.Name = filepath.Split(path)
-	return fi.Stat()
+	serr := fi.Stat()
+	if err == nil {
+		return serr
+	}
+	return errors.Join(err, serr)
 }
 
 // Stat runs os.Stat on file, returns any error directly but otherwise updates
 // file info, including mime type, which then drives Kind and Icon -- this is
 // the main function to call to update state.
 func (fi *FileInfo) Stat() error {
+	fi.Cat = UnknownCategory
+	fi.Known = Unknown
+	fi.Kind = ""
+	mtyp, _, err := MimeFromFile(fi.Path)
+	if err == nil {
+		fi.Mime = mtyp
+		fi.Cat = CategoryFromMime(fi.Mime)
+		fi.Known = MimeKnown(fi.Mime)
+		if fi.Cat != UnknownCategory {
+			fi.Kind = fi.Cat.String() + ": "
+		}
+		if fi.Known != Unknown {
+			fi.Kind += fi.Known.String()
+		} else {
+			fi.Kind += MimeSub(fi.Mime)
+		}
+	}
 	info, err := os.Stat(fi.Path)
 	if err != nil {
 		return err
@@ -113,32 +144,32 @@ func (fi *FileInfo) Stat() error {
 		fi.Cat = Folder
 		fi.Known = AnyFolder
 	} else {
-		fi.Cat = UnknownCategory
-		fi.Known = Unknown
-		fi.Kind = ""
-		mtyp, _, err := MimeFromFile(fi.Path)
-		if err == nil {
-			fi.Mime = mtyp
-			fi.Cat = CategoryFromMime(fi.Mime)
-			fi.Known = MimeKnown(fi.Mime)
-			if fi.Cat != UnknownCategory {
-				fi.Kind = fi.Cat.String() + ": "
-			}
-			if fi.Known != Unknown {
-				fi.Kind += fi.Known.String()
-			} else {
-				fi.Kind += MimeSub(fi.Mime)
-			}
-		}
 		if fi.Cat == UnknownCategory {
 			if fi.IsExec() {
 				fi.Cat = Exe
+				fi.Known = AnyExe
 			}
 		}
 	}
 	icn, _ := fi.FindIcon()
 	fi.Ic = icn
 	return nil
+}
+
+// SetType sets file type information for given Known file type
+func (fi *FileInfo) SetType(ftyp Known) {
+	mt := MimeFromKnown(ftyp)
+	fi.Mime = mt.Mime
+	fi.Cat = mt.Cat
+	fi.Known = mt.Known
+	if fi.Name == "" && len(mt.Exts) > 0 {
+		fi.Name = "_fake" + mt.Exts[0]
+		fi.Path = fi.Name
+	}
+	fi.Kind = fi.Cat.String() + ": "
+	if fi.Known != Unknown {
+		fi.Kind += fi.Known.String()
+	}
 }
 
 // IsDir returns true if file is a directory (folder)
@@ -291,48 +322,7 @@ func (fi *FileInfo) FindIcon() (icons.Icon, bool) {
 	if fi.IsDir() {
 		return icons.Folder, true
 	}
-	if fi.Known != Unknown {
-		snm := strings.ToLower(fi.Known.String())
-		if icn := icons.Icon(snm); icn.IsValid() {
-			return icn, true
-		}
-		if icn := icons.Icon("file-" + snm); icn.IsValid() {
-			return icn, true
-		}
-		if icn := icons.Icon(snm + "_file"); icn.IsValid() {
-			return icn, true
-		}
-	}
-	subt := strings.ToLower(MimeSub(fi.Mime))
-	if subt != "" {
-		if icn := icons.Icon(subt); icn.IsValid() {
-			return icn, true
-		}
-	}
-	if fi.Cat != UnknownCategory {
-		cat := strings.ToLower(fi.Cat.String())
-		if icn := icons.Icon(cat); icn.IsValid() {
-			return icn, true
-		}
-		if icn := icons.Icon("file-" + cat); icn.IsValid() {
-			return icn, true
-		}
-		if icn := icons.Icon(cat + "_file"); icn.IsValid() {
-			return icn, true
-		}
-	}
-	ext := filepath.Ext(fi.Name)
-	if ext != "" {
-		if icn := icons.Icon(ext[1:]); icn.IsValid() {
-			return icn, true
-		}
-	}
-	if fi.IsExec() {
-		return icons.PlayArrow, true
-	}
-
-	icn := icons.None
-	return icn, false
+	return Icons[fi.Known], true
 }
 
 // Note: can get all the detailed birth, access, change times from this package

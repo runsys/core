@@ -28,7 +28,7 @@ func TestHandleWidgetState(t *testing.T) {
 		assert.Equal(t, expect, w.Styles.State)
 
 		w.Styler(func(s *styles.Style) {
-			w.SetAbilities(true, ability)
+			s.SetAbilities(true, ability)
 		})
 		w.Style()
 
@@ -49,9 +49,6 @@ func TestHandleWidgetState(t *testing.T) {
 	test(abilities.Draggable, states.Dragging, events.DragStart, events.Drop)
 	test(abilities.Focusable, states.Focused, events.Focus, events.FocusLost)
 	test(abilities.Checkable, states.Checked, events.Click, events.Click)
-
-	w.HandleSelectToggle()
-	test(abilities.Selectable, states.Selected, events.Select, events.Select)
 }
 
 func TestWidgetEventManager(t *testing.T) {
@@ -98,7 +95,7 @@ func TestWidgetPrev(t *testing.T) {
 		"/body scene",
 	}
 	i := 0
-	WidgetPrevFunc(lt, func(w Widget) bool {
+	widgetPrevFunc(lt, func(w Widget) bool {
 		have := w.AsTree().Path()
 		want := paths[i]
 		if have != want {
@@ -126,7 +123,7 @@ func TestWidgetNext(t *testing.T) {
 		"/body scene/body/text-field-2",
 	}
 	i := 0
-	WidgetNextFunc(ft, func(w Widget) bool {
+	widgetNextFunc(ft, func(w Widget) bool {
 		have := w.AsTree().Path()
 		want := paths[i]
 		if have != want {

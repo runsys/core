@@ -15,7 +15,7 @@ import (
 )
 
 // Handle represents a draggable handle that can be used to
-// control the size of an element. The [Handle.Styles.Direction]
+// control the size of an element. The [styles.Style.Direction]
 // controls the direction in which the handle moves.
 type Handle struct {
 	WidgetBase
@@ -23,11 +23,13 @@ type Handle struct {
 	// Min is the minimum value that the handle can go to
 	// (typically the lower bound of the dialog/splits)
 	Min float32
+
 	// Max is the maximum value that the handle can go to
 	// (typically the upper bound of the dialog/splits)
 	Max float32
+
 	// Pos is the current position of the handle on the
-	// scale of [Handle.Min] to [Handle.Max]
+	// scale of [Handle.Min] to [Handle.Max].
 	Pos float32
 }
 
@@ -60,8 +62,8 @@ func (hl *Handle) Init() {
 	})
 
 	hl.On(events.SlideMove, func(e events.Event) {
-		pos := hl.ParentWidget().PointToRelPos(e.Pos())
-		hl.Pos = math32.Vector2FromPoint(pos).Dim(hl.Styles.Direction.Dim())
+		pos := hl.parentWidget().PointToRelPos(e.Pos())
+		hl.Pos = math32.FromPoint(pos).Dim(hl.Styles.Direction.Dim())
 		hl.SendChange(e)
 	})
 }
@@ -69,5 +71,5 @@ func (hl *Handle) Init() {
 // Value returns the value on a normalized scale of 0-1,
 // based on [Handle.Pos], [Handle.Min], and [Handle.Max].
 func (hl *Handle) Value() float32 {
-	return hl.Pos / (hl.Max - hl.Min)
+	return (hl.Pos - hl.Min) / (hl.Max - hl.Min)
 }

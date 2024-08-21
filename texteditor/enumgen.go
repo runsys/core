@@ -6,88 +6,45 @@ import (
 	"cogentcore.org/core/enums"
 )
 
-var _SpellSignalsValues = []SpellSignals{0, 1}
+var _bufferSignalsValues = []bufferSignals{0, 1, 2, 3, 4, 5, 6}
 
-// SpellSignalsN is the highest valid value for type SpellSignals, plus one.
-const SpellSignalsN SpellSignals = 2
+// bufferSignalsN is the highest valid value for type bufferSignals, plus one.
+const bufferSignalsN bufferSignals = 7
 
-var _SpellSignalsValueMap = map[string]SpellSignals{`Select`: 0, `Ignore`: 1}
+var _bufferSignalsValueMap = map[string]bufferSignals{`Done`: 0, `New`: 1, `Mods`: 2, `Insert`: 3, `Delete`: 4, `MarkupUpdated`: 5, `Closed`: 6}
 
-var _SpellSignalsDescMap = map[SpellSignals]string{0: `SpellSelect means the user chose one of the possible corrections`, 1: `SpellIgnore signals the user chose ignore so clear the tag`}
+var _bufferSignalsDescMap = map[bufferSignals]string{0: `bufferDone means that editing was completed and applied to Txt field -- data is Txt bytes`, 1: `bufferNew signals that entirely new text is present. All views should do full layout update.`, 2: `bufferMods signals that potentially diffuse modifications have been made. Views should do a Layout and Render.`, 3: `bufferInsert signals that some text was inserted. data is text.Edit describing change. The Buf always reflects the current state *after* the edit.`, 4: `bufferDelete signals that some text was deleted. data is text.Edit describing change. The Buf always reflects the current state *after* the edit.`, 5: `bufferMarkupUpdated signals that the Markup text has been updated This signal is typically sent from a separate goroutine, so should be used with a mutex`, 6: `bufferClosed signals that the text was closed.`}
 
-var _SpellSignalsMap = map[SpellSignals]string{0: `Select`, 1: `Ignore`}
+var _bufferSignalsMap = map[bufferSignals]string{0: `Done`, 1: `New`, 2: `Mods`, 3: `Insert`, 4: `Delete`, 5: `MarkupUpdated`, 6: `Closed`}
 
-// String returns the string representation of this SpellSignals value.
-func (i SpellSignals) String() string { return enums.String(i, _SpellSignalsMap) }
+// String returns the string representation of this bufferSignals value.
+func (i bufferSignals) String() string { return enums.String(i, _bufferSignalsMap) }
 
-// SetString sets the SpellSignals value from its string representation,
+// SetString sets the bufferSignals value from its string representation,
 // and returns an error if the string is invalid.
-func (i *SpellSignals) SetString(s string) error {
-	return enums.SetString(i, s, _SpellSignalsValueMap, "SpellSignals")
+func (i *bufferSignals) SetString(s string) error {
+	return enums.SetString(i, s, _bufferSignalsValueMap, "bufferSignals")
 }
 
-// Int64 returns the SpellSignals value as an int64.
-func (i SpellSignals) Int64() int64 { return int64(i) }
+// Int64 returns the bufferSignals value as an int64.
+func (i bufferSignals) Int64() int64 { return int64(i) }
 
-// SetInt64 sets the SpellSignals value from an int64.
-func (i *SpellSignals) SetInt64(in int64) { *i = SpellSignals(in) }
+// SetInt64 sets the bufferSignals value from an int64.
+func (i *bufferSignals) SetInt64(in int64) { *i = bufferSignals(in) }
 
-// Desc returns the description of the SpellSignals value.
-func (i SpellSignals) Desc() string { return enums.Desc(i, _SpellSignalsDescMap) }
+// Desc returns the description of the bufferSignals value.
+func (i bufferSignals) Desc() string { return enums.Desc(i, _bufferSignalsDescMap) }
 
-// SpellSignalsValues returns all possible values for the type SpellSignals.
-func SpellSignalsValues() []SpellSignals { return _SpellSignalsValues }
+// bufferSignalsValues returns all possible values for the type bufferSignals.
+func bufferSignalsValues() []bufferSignals { return _bufferSignalsValues }
 
-// Values returns all possible values for the type SpellSignals.
-func (i SpellSignals) Values() []enums.Enum { return enums.Values(_SpellSignalsValues) }
+// Values returns all possible values for the type bufferSignals.
+func (i bufferSignals) Values() []enums.Enum { return enums.Values(_bufferSignalsValues) }
 
 // MarshalText implements the [encoding.TextMarshaler] interface.
-func (i SpellSignals) MarshalText() ([]byte, error) { return []byte(i.String()), nil }
+func (i bufferSignals) MarshalText() ([]byte, error) { return []byte(i.String()), nil }
 
 // UnmarshalText implements the [encoding.TextUnmarshaler] interface.
-func (i *SpellSignals) UnmarshalText(text []byte) error {
-	return enums.UnmarshalText(i, text, "SpellSignals")
-}
-
-var _BufferSignalsValues = []BufferSignals{0, 1, 2, 3, 4, 5, 6}
-
-// BufferSignalsN is the highest valid value for type BufferSignals, plus one.
-const BufferSignalsN BufferSignals = 7
-
-var _BufferSignalsValueMap = map[string]BufferSignals{`Done`: 0, `New`: 1, `Mods`: 2, `Insert`: 3, `Delete`: 4, `MarkupUpdated`: 5, `Closed`: 6}
-
-var _BufferSignalsDescMap = map[BufferSignals]string{0: `BufferDone means that editing was completed and applied to Txt field -- data is Txt bytes`, 1: `BufferNew signals that entirely new text is present. All views should do full layout update.`, 2: `BufferMods signals that potentially diffuse modifications have been made. Views should do a Layout and Render.`, 3: `BufferInsert signals that some text was inserted. data is textbuf.Edit describing change. The Buf always reflects the current state *after* the edit.`, 4: `BufferDelete signals that some text was deleted. data is textbuf.Edit describing change. The Buf always reflects the current state *after* the edit.`, 5: `BufferMarkupUpdated signals that the Markup text has been updated This signal is typically sent from a separate goroutine, so should be used with a mutex`, 6: `BufferClosed signals that the textbuf was closed.`}
-
-var _BufferSignalsMap = map[BufferSignals]string{0: `Done`, 1: `New`, 2: `Mods`, 3: `Insert`, 4: `Delete`, 5: `MarkupUpdated`, 6: `Closed`}
-
-// String returns the string representation of this BufferSignals value.
-func (i BufferSignals) String() string { return enums.String(i, _BufferSignalsMap) }
-
-// SetString sets the BufferSignals value from its string representation,
-// and returns an error if the string is invalid.
-func (i *BufferSignals) SetString(s string) error {
-	return enums.SetString(i, s, _BufferSignalsValueMap, "BufferSignals")
-}
-
-// Int64 returns the BufferSignals value as an int64.
-func (i BufferSignals) Int64() int64 { return int64(i) }
-
-// SetInt64 sets the BufferSignals value from an int64.
-func (i *BufferSignals) SetInt64(in int64) { *i = BufferSignals(in) }
-
-// Desc returns the description of the BufferSignals value.
-func (i BufferSignals) Desc() string { return enums.Desc(i, _BufferSignalsDescMap) }
-
-// BufferSignalsValues returns all possible values for the type BufferSignals.
-func BufferSignalsValues() []BufferSignals { return _BufferSignalsValues }
-
-// Values returns all possible values for the type BufferSignals.
-func (i BufferSignals) Values() []enums.Enum { return enums.Values(_BufferSignalsValues) }
-
-// MarshalText implements the [encoding.TextMarshaler] interface.
-func (i BufferSignals) MarshalText() ([]byte, error) { return []byte(i.String()), nil }
-
-// UnmarshalText implements the [encoding.TextUnmarshaler] interface.
-func (i *BufferSignals) UnmarshalText(text []byte) error {
-	return enums.UnmarshalText(i, text, "BufferSignals")
+func (i *bufferSignals) UnmarshalText(text []byte) error {
+	return enums.UnmarshalText(i, text, "bufferSignals")
 }

@@ -1,4 +1,6 @@
-# Styling
+## All styling properties
+
+Here is a [list](https://pkg.go.dev/cogentcore.org/core/styles#Style) of all styling properties supported by Cogent Core, which you can experiment with in the interactive styling demo at the bottom of this page.
 
 ## Styling order
 
@@ -8,12 +10,12 @@ As with event handlers, there are three levels of stylers: `First`, regular, and
 
 ## Styling multiple widgets
 
-You can style all widgets within a certain container at once using [[core.Widget.OnWidgetAdded]]:
+You can style all direct children of a container at once using [[tree.NodeBase.OnChildAdded]]:
 
 ```Go
-fr := core.NewFrame(parent)
-fr.OnWidgetAdded(func(w core.Widget) { // TODO(config)
-    w.AsWidget().Styler(func(s *styles.Style) {
+fr := core.NewFrame(b)
+fr.SetOnChildAdded(func(n tree.Node) {
+    core.AsWidget(n).Styler(func(s *styles.Style) {
         s.Color = colors.Scheme.Error.Base
     })
 })
@@ -22,14 +24,14 @@ core.NewSwitch(fr).SetText("Switch")
 core.NewTextField(fr).SetText("Text field")
 ```
 
-You can style all widgets of a certain type within a certain container:
+You can style all direct children of a certain type in a container:
 
 ```Go
-fr := core.NewFrame(parent)
-fr.OnWidgetAdded(func(w core.Widget) {
-    switch w := w.(type) {
+fr := core.NewFrame(b)
+fr.SetOnChildAdded(func(n tree.Node) {
+    switch n := n.(type) {
     case *core.Button:
-        w.Styler(func(s *styles.Style) {
+        n.Styler(func(s *styles.Style) {
             s.Border.Radius = styles.BorderRadiusSmall
         })
     }
@@ -39,11 +41,11 @@ core.NewButton(fr).SetText("Second")
 core.NewButton(fr).SetText("Third")
 ```
 
-You can style all widgets in the entire app using [[core.App.SceneConfig]] in combination with [[core.WidgetBase.OnWidgetAdded]]. For example, to make all buttons in your app have a small border radius, you can do the following:
+You can style all widgets in the entire app using [[core.App.SceneInit]] in conjunction with [[core.Scene.WidgetInit]]. For example, to make all buttons in your app have a small border radius, you can do the following:
 
 ```go
-core.TheApp.SetSceneConfig(func(sc *core.Scene) {
-    sc.OnWidgetAdded(func(w core.Widget) {
+core.TheApp.SetSceneInit(func(sc *core.Scene) {
+    sc.SetWidgetInit(func(w core.Widget) {
         switch w := w.(type) {
         case *core.Button:
             w.Styler(func(s *styles.Style) {
@@ -53,3 +55,27 @@ core.TheApp.SetSceneConfig(func(sc *core.Scene) {
     })
 })
 ```
+
+## States and abilities
+
+The [[styles/states]] and [[styles/abilities]] flags provide a major source of input for the styling of a widget.  For example, if a widget has the `abilities.Hoverable` flag set, then when a user hovers the mouse over that widget, it will get the `states.Hovered` flag set, which can then be used to style the widget appropriately.
+
+For example, here's the relevant code for the [[core.Button]]:
+
+```go
+bt.Styler(func(s *styles.Style) {
+    s.SetAbilities(true, abilities.Activatable, abilities.Focusable, abilities.Hoverable, abilities.DoubleClickable, abilities.TripleClickable)
+    ...
+    s.MaxBoxShadow = styles.BoxShadow1()
+    if s.Is(states.Hovered) {
+        s.BoxShadow = s.MaxBoxShadow
+    }
+    ...
+})
+```
+
+## Interactive styling demo
+
+You can edit the style properties below and see them immediately take effect on the outer frame:
+
+<style-demo></style-demo>

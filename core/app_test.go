@@ -10,9 +10,9 @@ import (
 	"cogentcore.org/core/styles"
 )
 
-func TestSceneConfig(t *testing.T) {
-	TheApp.SetSceneConfig(func(sc *Scene) {
-		sc.OnWidgetAdded(func(w Widget) {
+func TestSceneInit(t *testing.T) {
+	TheApp.SetSceneInit(func(sc *Scene) {
+		sc.SetWidgetInit(func(w Widget) {
 			switch w := w.(type) {
 			case *Button:
 				w.Styler(func(s *styles.Style) {
@@ -22,11 +22,11 @@ func TestSceneConfig(t *testing.T) {
 		})
 	})
 	defer func() {
-		TheApp.SetSceneConfig(nil)
+		TheApp.SetSceneInit(nil)
 	}()
 	b := NewBody()
 	NewButton(b).SetText("Test")
-	b.AssertRender(t, "app/scene-config")
+	b.AssertRender(t, "app/scene-init")
 }
 
 func TestMakeAppBar(t *testing.T) {
@@ -34,6 +34,6 @@ func TestMakeAppBar(t *testing.T) {
 	b.Styler(func(s *styles.Style) {
 		s.Min.X.Dp(500)
 	})
-	MakeAppBar(b)
+	makeAppBar(b)
 	b.AssertRender(t, "app/make-app-bar")
 }

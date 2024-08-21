@@ -49,7 +49,7 @@ func (il *InlineList) Init() {
 					wb.SetReadOnly(true)
 				} else {
 					wb.AddContextMenu(func(m *Scene) {
-						il.ContextMenu(m, i)
+						il.contextMenu(m, i)
 					})
 				}
 				wb.Updater(func() {
@@ -63,7 +63,7 @@ func (il *InlineList) Init() {
 				w.SetIcon(icons.Add).SetType(ButtonTonal)
 				w.Tooltip = "Add an element to the list"
 				w.OnClick(func(e events.Event) {
-					il.SliceNewAt(-1)
+					il.NewAt(-1)
 				})
 			})
 		}
@@ -74,8 +74,7 @@ func (il *InlineList) Init() {
 				d := NewBody().AddTitle(il.ValueTitle).AddText(il.Tooltip)
 				NewList(d).SetSlice(il.Slice).SetValueTitle(il.ValueTitle)
 				d.OnClose(func(e events.Event) {
-					il.Update()
-					il.SendChange()
+					il.UpdateChange()
 				})
 				d.RunFullDialog(il)
 			})
@@ -83,7 +82,8 @@ func (il *InlineList) Init() {
 	})
 }
 
-// SetSlice sets the source slice that we are viewing -- rebuilds the children to represent this slice
+// SetSlice sets the source slice that we are viewing.
+// It rebuilds the children to represent this slice.
 func (il *InlineList) SetSlice(sl any) *InlineList {
 	if reflectx.AnyIsNil(sl) {
 		il.Slice = nil
@@ -103,37 +103,33 @@ func (il *InlineList) SetSlice(sl any) *InlineList {
 	return il
 }
 
-// SliceNewAt inserts a new blank element at given index in the slice -- -1
-// means the end
-func (il *InlineList) SliceNewAt(idx int) {
+// NewAt inserts a new blank element at the given index in the slice.
+// -1 indicates to insert the element at the end.
+func (il *InlineList) NewAt(idx int) {
 	if il.isArray {
 		return
 	}
 	reflectx.SliceNewAt(il.Slice, idx)
-
-	il.SendChange()
-	il.Update()
+	il.UpdateChange()
 }
 
-// SliceDeleteAt deletes element at given index from slice
-func (il *InlineList) SliceDeleteAt(idx int) {
+// DeleteAt deletes the element at the given index from the slice.
+func (il *InlineList) DeleteAt(idx int) {
 	if il.isArray {
 		return
 	}
 	reflectx.SliceDeleteAt(il.Slice, idx)
-
-	il.SendChange()
-	il.Update()
+	il.UpdateChange()
 }
 
-func (il *InlineList) ContextMenu(m *Scene, idx int) {
+func (il *InlineList) contextMenu(m *Scene, idx int) {
 	if il.IsReadOnly() || il.isArray {
 		return
 	}
 	NewButton(m).SetText("Add").SetIcon(icons.Add).OnClick(func(e events.Event) {
-		il.SliceNewAt(idx)
+		il.NewAt(idx)
 	})
 	NewButton(m).SetText("Delete").SetIcon(icons.Delete).OnClick(func(e events.Event) {
-		il.SliceDeleteAt(idx)
+		il.DeleteAt(idx)
 	})
 }

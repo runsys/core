@@ -15,48 +15,48 @@ import (
 
 	"cogentcore.org/core/base/fileinfo"
 	"cogentcore.org/core/core"
-	"cogentcore.org/core/texteditor/textbuf"
+	"cogentcore.org/core/texteditor/text"
 	"cogentcore.org/core/tree"
 )
 
-// FindLoc corresponds to the search scope
-type FindLoc int32 //enums:enum -trim-prefix FindLoc
+// FindLocation corresponds to the search scope
+type FindLocation int32 //enums:enum -trim-prefix FindLocation
 
 const (
 	// FindOpen finds in all open folders in the left file browser
-	FindLocOpen FindLoc = iota
+	FindLocationOpen FindLocation = iota
 
-	// FindLocAll finds in all directories under the root path. can be slow for large file trees
-	FindLocAll
+	// FindLocationAll finds in all directories under the root path. can be slow for large file trees
+	FindLocationAll
 
-	// FindLocFile only finds in the current active file
-	FindLocFile
+	// FindLocationFile only finds in the current active file
+	FindLocationFile
 
-	// FindLocDir only finds in the directory of the current active file
-	FindLocDir
+	// FindLocationDir only finds in the directory of the current active file
+	FindLocationDir
 
-	// FindLocNotTop finds in all open folders *except* the top-level folder
-	FindLocNotTop
+	// FindLocationNotTop finds in all open folders *except* the top-level folder
+	FindLocationNotTop
 )
 
 // SearchResults is used to report search results
 type SearchResults struct {
 	Node    *Node
 	Count   int
-	Matches []textbuf.Match
+	Matches []text.Match
 }
 
 // Search returns list of all nodes starting at given node of given
 // language(s) that contain the given string, sorted in descending order by number
-// of occurrences -- ignoreCase transforms everything into lowercase
-func Search(start *Node, find string, ignoreCase, regExp bool, loc FindLoc, activeDir string, langs []fileinfo.Known, openPath func(path string) *Node) []SearchResults {
+// of occurrences; ignoreCase transforms everything into lowercase
+func Search(start *Node, find string, ignoreCase, regExp bool, loc FindLocation, activeDir string, langs []fileinfo.Known, openPath func(path string) *Node) []SearchResults {
 	fb := []byte(find)
 	fsz := len(find)
 	if fsz == 0 {
 		return nil
 	}
-	if loc == FindLocAll {
-		return FindAll(start, find, ignoreCase, regExp, langs, openPath)
+	if loc == FindLocationAll {
+		return findAll(start, find, ignoreCase, regExp, langs, openPath)
 	}
 	var re *regexp.Regexp
 	var err error
@@ -73,11 +73,11 @@ func Search(start *Node, find string, ignoreCase, regExp bool, loc FindLoc, acti
 		if sfn == nil {
 			return tree.Continue
 		}
-		if sfn.IsDir() && !sfn.IsOpen() {
+		if sfn.IsDir() && !sfn.isOpen() {
 			// fmt.Printf("dir: %v closed\n", sfn.FPath)
 			return tree.Break // don't go down into closed directories!
 		}
-		if sfn.IsDir() || sfn.IsExec() || sfn.Info.Kind == "octet-stream" || sfn.IsAutoSave() {
+		if sfn.IsDir() || sfn.IsExec() || sfn.Info.Kind == "octet-stream" || sfn.isAutoSave() {
 			// fmt.Printf("dir: %v opened\n", sfn.Nm)
 			return tree.Continue
 		}
@@ -90,19 +90,19 @@ func Search(start *Node, find string, ignoreCase, regExp bool, loc FindLoc, acti
 		if !fileinfo.IsMatchList(langs, sfn.Info.Known) {
 			return tree.Continue
 		}
-		if loc == FindLocDir {
+		if loc == FindLocationDir {
 			cdir, _ := filepath.Split(string(sfn.Filepath))
 			if activeDir != cdir {
 				return tree.Continue
 			}
-		} else if loc == FindLocNotTop {
+		} else if loc == FindLocationNotTop {
 			// if level == 1 { // todo
 			// 	return tree.Continue
 			// }
 		}
 		var cnt int
-		var matches []textbuf.Match
-		if sfn.IsOpen() && sfn.Buffer != nil {
+		var matches []text.Match
+		if sfn.isOpen() && sfn.Buffer != nil {
 			if regExp {
 				cnt, matches = sfn.Buffer.SearchRegexp(re)
 			} else {
@@ -110,9 +110,9 @@ func Search(start *Node, find string, ignoreCase, regExp bool, loc FindLoc, acti
 			}
 		} else {
 			if regExp {
-				cnt, matches = textbuf.SearchFileRegexp(string(sfn.Filepath), re)
+				cnt, matches = text.SearchFileRegexp(string(sfn.Filepath), re)
 			} else {
-				cnt, matches = textbuf.SearchFile(string(sfn.Filepath), fb, ignoreCase)
+				cnt, matches = text.SearchFile(string(sfn.Filepath), fb, ignoreCase)
 			}
 		}
 		if cnt > 0 {
@@ -126,11 +126,11 @@ func Search(start *Node, find string, ignoreCase, regExp bool, loc FindLoc, acti
 	return mls
 }
 
-// FindAll returns list of all files (regardless of what is currently open)
+// findAll returns list of all files (regardless of what is currently open)
 // starting at given node of given language(s) that contain the given string,
 // sorted in descending order by number of occurrences. ignoreCase transforms
 // everything into lowercase.
-func FindAll(start *Node, find string, ignoreCase, regExp bool, langs []fileinfo.Known, openPath func(path string) *Node) []SearchResults {
+func findAll(start *Node, find string, ignoreCase, regExp bool, langs []fileinfo.Known, openPath func(path string) *Node) []SearchResults {
 	fb := []byte(find)
 	fsz := len(find)
 	if fsz == 0 {
@@ -175,7 +175,7 @@ func FindAll(start *Node, find string, ignoreCase, regExp bool, langs []fileinfo
 		}
 		ofn := openPath(path)
 		var cnt int
-		var matches []textbuf.Match
+		var matches []text.Match
 		if ofn != nil && ofn.Buffer != nil {
 			if regExp {
 				cnt, matches = ofn.Buffer.SearchRegexp(re)
@@ -184,9 +184,9 @@ func FindAll(start *Node, find string, ignoreCase, regExp bool, langs []fileinfo
 			}
 		} else {
 			if regExp {
-				cnt, matches = textbuf.SearchFileRegexp(path, re)
+				cnt, matches = text.SearchFileRegexp(path, re)
 			} else {
-				cnt, matches = textbuf.SearchFile(path, fb, ignoreCase)
+				cnt, matches = text.SearchFile(path, fb, ignoreCase)
 			}
 		}
 		if cnt > 0 {

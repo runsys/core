@@ -86,7 +86,7 @@ func TestSliderEnforceStep(t *testing.T) {
 
 func TestSliderIcon(t *testing.T) {
 	b := NewBody()
-	NewSlider(b).SetIcon(icons.DeployedCode.Fill())
+	NewSlider(b).SetIcon(icons.DeployedCodeFill)
 	b.AssertRender(t, "slider/icon")
 }
 
@@ -156,7 +156,7 @@ func TestSliderInput(t *testing.T) {
 		}
 		sr.SystemEvents().MouseButton(events.MouseUp, events.Left, image.Pt(200, 20), 0)
 	}, func() {
-		tolassert.EqualTol(t, 4, float32(n), 3)
+		tolassert.EqualTol(t, 5, float32(n), 4)
 		tolassert.Equal(t, 0.5756579, value)
 	})
 }

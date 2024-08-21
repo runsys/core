@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"log/slog"
 	"strings"
 
 	"cogentcore.org/core/base/reflectx"
@@ -179,7 +180,8 @@ type Style struct { //types:add
 	ActualBackground image.Image
 
 	// VirtualKeyboard is the virtual keyboard to display, if any,
-	// on mobile platforms when this element is focused.
+	// on mobile platforms when this element is focused. It is not
+	// used if the element is read only.
 	VirtualKeyboard VirtualKeyboards
 
 	// position is only used for Layout = Nil cases
@@ -203,8 +205,9 @@ type Style struct { //types:add
 	// within a grid layout
 	ColSpan int
 
-	// width of a layout scrollbar
-	ScrollBarWidth units.Value
+	// ScrollbarWidth is the width of layout scrollbars. It defaults
+	// to [DefaultScrollbarWidth], and it is inherited.
+	ScrollbarWidth units.Value
 
 	// font styling parameters
 	Font Font
@@ -221,6 +224,7 @@ func (s *Style) Defaults() {
 	s.UnitContext.Defaults()
 	s.LayoutDefaults()
 	s.Color = colors.Scheme.OnSurface
+	s.Border.Color.Set(colors.Scheme.Outline)
 	s.Opacity = 1
 	s.RenderBox = true
 	s.FillMargin = true
@@ -328,7 +332,7 @@ func (s *Style) AbilityIs(able abilities.Abilities) bool {
 	return s.Abilities.HasFlag(able)
 }
 
-// SetState sets the given [states.State] flags to the given value
+// SetState sets the given [states.States] flags to the given value
 func (s *Style) SetState(on bool, state ...states.States) *Style {
 	bfs := make([]enums.BitFlag, len(state))
 	for i, st := range state {
@@ -344,6 +348,11 @@ func (s *Style) SetEnabled(on bool) *Style {
 	return s
 }
 
+// IsReadOnly returns whether this style object is flagged as either [states.ReadOnly] or [states.Disabled].
+func (s *Style) IsReadOnly() bool {
+	return s.Is(states.ReadOnly) || s.Is(states.Disabled)
+}
+
 // SetAbilities sets the given [states.State] flags to the given value
 func (s *Style) SetAbilities(on bool, able ...abilities.Abilities) {
 	bfs := make([]enums.BitFlag, len(able))
@@ -357,6 +366,7 @@ func (s *Style) SetAbilities(on bool, able ...abilities.Abilities) {
 func (s *Style) InheritFields(parent *Style) {
 	s.Color = parent.Color
 	s.Opacity = parent.Opacity
+	s.ScrollbarWidth = parent.ScrollbarWidth
 	s.Font.InheritFields(&parent.Font)
 	s.Text.InheritFields(&parent.Text)
 }
@@ -374,6 +384,12 @@ func (s *Style) ToDotsImpl(uc *units.Context) {
 // ToDots caches all style elements in terms of raw pixel
 // dots for rendering.
 func (s *Style) ToDots() {
+	if s.Min.X.Unit == units.UnitEw || s.Min.X.Unit == units.UnitEh ||
+		s.Min.Y.Unit == units.UnitEw || s.Min.Y.Unit == units.UnitEh ||
+		s.Max.X.Unit == units.UnitEw || s.Max.X.Unit == units.UnitEh ||
+		s.Max.Y.Unit == units.UnitEw || s.Max.Y.Unit == units.UnitEh {
+		slog.Error("styling error: cannot use Ew or Eh for Min size -- that is self-referential!")
+	}
 	s.ToDotsImpl(&s.UnitContext)
 }
 

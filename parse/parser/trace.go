@@ -105,7 +105,7 @@ func (pt *TraceOptions) CheckRule(rule string) bool {
 }
 
 // Out outputs a trace message -- returns true if actually output
-func (pt *TraceOptions) Out(ps *State, pr *Rule, step Steps, pos lexer.Pos, scope lexer.Reg, ast *Ast, msg string) bool {
+func (pt *TraceOptions) Out(ps *State, pr *Rule, step Steps, pos lexer.Pos, scope lexer.Reg, ast *AST, msg string) bool {
 	if !pt.On {
 		return false
 	}
@@ -135,7 +135,7 @@ func (pt *TraceOptions) Out(ps *State, pr *Rule, step Steps, pos lexer.Pos, scop
 		}
 	}
 	tokSrc := pos.String() + `"` + string(ps.Src.TokenSrc(pos)) + `"`
-	plev := ast.ParentLevel(ps.Ast)
+	plev := ast.ParentLevel(ps.AST)
 	ind := ""
 	for i := 0; i < plev; i++ {
 		ind += "\t"

@@ -5,8 +5,6 @@
 package styles
 
 import (
-	"log/slog"
-
 	"cogentcore.org/core/math32"
 	"cogentcore.org/core/styles/units"
 )
@@ -25,30 +23,14 @@ import (
 
 // IMPORTANT: any changes here must be updated in style_properties.go StyleLayoutFuncs
 
-// ScrollBarWidthDefault is the default width of a scrollbar in Dp
-var ScrollBarWidthDefault = float32(10)
+// DefaultScrollbarWidth is the default [Style.ScrollbarWidth].
+var DefaultScrollbarWidth = units.Dp(10)
 
 func (s *Style) LayoutDefaults() {
 	s.Justify.Defaults()
 	s.Align.Defaults()
 	s.Gap.Set(units.Em(0.5))
-	s.ScrollBarWidth.Dp(ScrollBarWidthDefault)
-}
-
-// LayoutHasParSizing returns true if the layout parameters use parent-relative
-// sizing units, which requires additional updating during layout
-func (s *Style) LayoutHasParSizing() bool {
-	if s.Min.X.Unit == units.UnitEw || s.Min.X.Unit == units.UnitEh ||
-		s.Min.Y.Unit == units.UnitEw || s.Min.Y.Unit == units.UnitEh ||
-		s.Max.X.Unit == units.UnitEw || s.Max.X.Unit == units.UnitEh ||
-		s.Max.Y.Unit == units.UnitEw || s.Max.Y.Unit == units.UnitEh {
-		slog.Error("styling error: cannot use Ew or Eh for Min size -- that is self-referential!")
-	}
-
-	return s.Min.X.Unit == units.UnitPw || s.Min.X.Unit == units.UnitPh ||
-		s.Min.Y.Unit == units.UnitPw || s.Min.Y.Unit == units.UnitPh ||
-		s.Max.X.Unit == units.UnitPw || s.Max.X.Unit == units.UnitPh ||
-		s.Max.Y.Unit == units.UnitPw || s.Max.Y.Unit == units.UnitPh
+	s.ScrollbarWidth = DefaultScrollbarWidth
 }
 
 // ToDots runs ToDots on unit values, to compile down to raw pixels
@@ -59,7 +41,7 @@ func (s *Style) LayoutToDots(uc *units.Context) {
 	s.Padding.ToDots(uc)
 	s.Margin.ToDots(uc)
 	s.Gap.ToDots(uc)
-	s.ScrollBarWidth.ToDots(uc)
+	s.ScrollbarWidth.ToDots(uc)
 
 	// max must be at least as much as min
 	if s.Max.X.Dots > 0 {

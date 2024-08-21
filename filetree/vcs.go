@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"cogentcore.org/core/base/errors"
 	"cogentcore.org/core/base/fsx"
@@ -16,7 +15,7 @@ import (
 	"cogentcore.org/core/core"
 	"cogentcore.org/core/styles"
 	"cogentcore.org/core/texteditor"
-	"cogentcore.org/core/texteditor/textbuf"
+	"cogentcore.org/core/texteditor/text"
 	"cogentcore.org/core/tree"
 )
 
@@ -25,11 +24,12 @@ import (
 func (fn *Node) FirstVCS() (vcs.Repo, *Node) {
 	var repo vcs.Repo
 	var rnode *Node
-	fn.WidgetWalkDown(func(wi core.Widget, wb *core.WidgetBase) bool {
-		sfn := AsNode(wi)
+	fn.WidgetWalkDown(func(cw core.Widget, cwb *core.WidgetBase) bool {
+		sfn := AsNode(cw)
 		if sfn == nil {
 			return tree.Continue
 		}
+		sfn.detectVCSRepo(false)
 		if sfn.DirRepo != nil {
 			repo = sfn.DirRepo
 			rnode = sfn
@@ -40,17 +40,17 @@ func (fn *Node) FirstVCS() (vcs.Repo, *Node) {
 	return repo, rnode
 }
 
-// DetectVCSRepo detects and configures DirRepo if this directory is root of
+// detectVCSRepo detects and configures DirRepo if this directory is root of
 // a VCS repository.  if updateFiles is true, gets the files in the dir.
 // returns true if a repository was newly found here.
-func (fn *Node) DetectVCSRepo(updateFiles bool) bool {
+func (fn *Node) detectVCSRepo(updateFiles bool) bool {
 	repo, _ := fn.Repo()
 	if repo != nil {
 		return false
 	}
 	path := string(fn.Filepath)
 	rtyp := vcs.DetectRepo(path)
-	if rtyp == "" {
+	if rtyp == vcs.NoVCS {
 		return false
 	}
 	var err error
@@ -61,7 +61,7 @@ func (fn *Node) DetectVCSRepo(updateFiles bool) bool {
 	}
 	fn.DirRepo = repo
 	if updateFiles {
-		fn.UpdateRepoFiles()
+		fn.updateRepoFiles()
 	}
 	return true
 }
@@ -70,7 +70,7 @@ func (fn *Node) DetectVCSRepo(updateFiles bool) bool {
 // and the node for the directory where the repo is based.
 // Goes up the tree until a repository is found.
 func (fn *Node) Repo() (vcs.Repo, *Node) {
-	if fn.IsExternal() {
+	if fn.isExternal() {
 		return nil, nil
 	}
 	if fn.DirRepo != nil {
@@ -96,15 +96,15 @@ func (fn *Node) Repo() (vcs.Repo, *Node) {
 	return repo, rnode
 }
 
-func (fn *Node) UpdateRepoFiles() {
+func (fn *Node) updateRepoFiles() {
 	if fn.DirRepo == nil {
 		return
 	}
-	fn.RepoFiles, _ = fn.DirRepo.Files()
+	fn.repoFiles, _ = fn.DirRepo.Files()
 }
 
-// AddToVCSSel adds selected files to version control system
-func (fn *Node) AddToVCSSel() { //types:add
+// addToVCSSelected adds selected files to version control system
+func (fn *Node) addToVCSSelected() { //types:add
 	fn.SelectedFunc(func(sn *Node) {
 		sn.AddToVCS()
 	})
@@ -124,15 +124,15 @@ func (fn *Node) AddToVCS() {
 	}
 }
 
-// DeleteFromVCSSel removes selected files from version control system
-func (fn *Node) DeleteFromVCSSel() { //types:add
+// deleteFromVCSSelected removes selected files from version control system
+func (fn *Node) deleteFromVCSSelected() { //types:add
 	fn.SelectedFunc(func(sn *Node) {
-		sn.DeleteFromVCS()
+		sn.deleteFromVCS()
 	})
 }
 
-// DeleteFromVCS removes file from version control
-func (fn *Node) DeleteFromVCS() {
+// deleteFromVCS removes file from version control
+func (fn *Node) deleteFromVCS() {
 	repo, _ := fn.Repo()
 	if repo == nil {
 		return
@@ -145,19 +145,19 @@ func (fn *Node) DeleteFromVCS() {
 	}
 }
 
-// CommitToVCSSel commits to version control system based on last selected file
-func (fn *Node) CommitToVCSSel() { //types:add
+// commitToVCSSelected commits to version control system based on last selected file
+func (fn *Node) commitToVCSSelected() { //types:add
 	done := false
 	fn.SelectedFunc(func(sn *Node) {
 		if !done {
-			core.CallFunc(sn, fn.CommitToVCS)
+			core.CallFunc(sn, fn.commitToVCS)
 			done = true
 		}
 	})
 }
 
-// CommitToVCS commits file changes to version control system
-func (fn *Node) CommitToVCS(message string) (err error) {
+// commitToVCS commits file changes to version control system
+func (fn *Node) commitToVCS(message string) (err error) {
 	repo, _ := fn.Repo()
 	if repo == nil {
 		return
@@ -174,15 +174,15 @@ func (fn *Node) CommitToVCS(message string) (err error) {
 	return err
 }
 
-// RevertVCSSel removes selected files from version control system
-func (fn *Node) RevertVCSSel() { //types:add
+// revertVCSSelected removes selected files from version control system
+func (fn *Node) revertVCSSelected() { //types:add
 	fn.SelectedFunc(func(sn *Node) {
-		sn.RevertVCS()
+		sn.revertVCS()
 	})
 }
 
-// RevertVCS reverts file changes since last commit
-func (fn *Node) RevertVCS() (err error) {
+// revertVCS reverts file changes since last commit
+func (fn *Node) revertVCS() (err error) {
 	repo, _ := fn.Repo()
 	if repo == nil {
 		return
@@ -206,21 +206,21 @@ func (fn *Node) RevertVCS() (err error) {
 	return err
 }
 
-// DiffVCSSel shows the diffs between two versions of selected files, given by the
+// diffVCSSelected shows the diffs between two versions of selected files, given by the
 // revision specifiers -- if empty, defaults to A = current HEAD, B = current WC file.
 // -1, -2 etc also work as universal ways of specifying prior revisions.
 // Diffs are shown in a DiffEditorDialog.
-func (fn *Node) DiffVCSSel(rev_a string, rev_b string) { //types:add
+func (fn *Node) diffVCSSelected(rev_a string, rev_b string) { //types:add
 	fn.SelectedFunc(func(sn *Node) {
-		sn.DiffVCS(rev_a, rev_b)
+		sn.diffVCS(rev_a, rev_b)
 	})
 }
 
-// DiffVCS shows the diffs between two versions of this file, given by the
+// diffVCS shows the diffs between two versions of this file, given by the
 // revision specifiers -- if empty, defaults to A = current HEAD, B = current WC file.
 // -1, -2 etc also work as universal ways of specifying prior revisions.
 // Diffs are shown in a DiffEditorDialog.
-func (fn *Node) DiffVCS(rev_a, rev_b string) error {
+func (fn *Node) diffVCS(rev_a, rev_b string) error {
 	repo, _ := fn.Repo()
 	if repo == nil {
 		return errors.New("file not in vcs repo: " + string(fn.Filepath))
@@ -232,17 +232,10 @@ func (fn *Node) DiffVCS(rev_a, rev_b string) error {
 	return err
 }
 
-// LogVCSSel shows the VCS log of commits for selected files, optionally with a
-// since date qualifier: If since is non-empty, it should be
-// a date-like expression that the VCS will understand, such as
-// 1/1/2020, yesterday, last year, etc.  SVN only understands a
-// number as a maximum number of items to return.
-// If allFiles is true, then the log will show revisions for all files, not just
-// this one.
-// Returns the Log and also shows it in a VCSLog which supports further actions.
-func (fn *Node) LogVCSSel(allFiles bool, since string) { //types:add
+// logVCSSelected shows the VCS log of commits for selected files.
+func (fn *Node) logVCSSelected() { //types:add
 	fn.SelectedFunc(func(sn *Node) {
-		sn.LogVCS(allFiles, since)
+		sn.LogVCS(false, "")
 	})
 }
 
@@ -270,27 +263,27 @@ func (fn *Node) LogVCS(allFiles bool, since string) (vcs.Log, error) {
 	if err != nil {
 		return lg, err
 	}
-	VCSLogDialog(nil, repo, lg, fnm, since)
+	vcsLogDialog(nil, repo, lg, fnm, since)
 	return lg, nil
 }
 
-// BlameVCSSel shows the VCS blame report for this file, reporting for each line
+// blameVCSSelected shows the VCS blame report for this file, reporting for each line
 // the revision and author of the last change.
-func (fn *Node) BlameVCSSel() { //types:add
+func (fn *Node) blameVCSSelected() { //types:add
 	fn.SelectedFunc(func(sn *Node) {
-		sn.BlameVCS()
+		sn.blameVCS()
 	})
 }
 
-// BlameDialog opens a dialog for displaying VCS blame data using textview.TwinViews.
+// blameDialog opens a dialog for displaying VCS blame data using textview.TwinViews.
 // blame is the annotated blame code, while fbytes is the original file contents.
-func BlameDialog(ctx core.Widget, fname string, blame, fbytes []byte) *texteditor.TwinEditors {
+func blameDialog(ctx core.Widget, fname string, blame, fbytes []byte) *texteditor.TwinEditors {
 	title := "VCS Blame: " + fsx.DirAndFile(fname)
 
 	d := core.NewBody().AddTitle(title)
 	tv := texteditor.NewTwinEditors(d)
 	tv.SetSplits(.3, .7)
-	tv.SetFiles(fname, fname, true)
+	tv.SetFiles(fname, fname)
 	flns := bytes.Split(fbytes, []byte("\n"))
 	lns := bytes.Split(blame, []byte("\n"))
 	nln := min(len(lns), len(flns))
@@ -311,6 +304,7 @@ func BlameDialog(ctx core.Widget, fname string, blame, fbytes []byte) *textedito
 	btxt := bytes.Join(blns, []byte("\n")) // makes a copy, so blame is disposable now
 	tv.BufferA.SetText(btxt)
 	tv.BufferB.SetText(fbytes)
+	tv.Update()
 
 	tva, tvb := tv.Editors()
 	tva.Styler(func(s *styles.Style) {
@@ -328,9 +322,9 @@ func BlameDialog(ctx core.Widget, fname string, blame, fbytes []byte) *textedito
 	return tv
 }
 
-// BlameVCS shows the VCS blame report for this file, reporting for each line
+// blameVCS shows the VCS blame report for this file, reporting for each line
 // the revision and author of the last change.
-func (fn *Node) BlameVCS() ([]byte, error) {
+func (fn *Node) blameVCS() ([]byte, error) {
 	repo, _ := fn.Repo()
 	if repo == nil {
 		return nil, errors.New("file not in vcs repo: " + string(fn.Filepath))
@@ -339,7 +333,7 @@ func (fn *Node) BlameVCS() ([]byte, error) {
 		return nil, errors.New("file not in vcs repo: " + string(fn.Filepath))
 	}
 	fnm := string(fn.Filepath)
-	fb, err := textbuf.FileBytes(fnm)
+	fb, err := text.FileBytes(fnm)
 	if err != nil {
 		return nil, err
 	}
@@ -347,14 +341,14 @@ func (fn *Node) BlameVCS() ([]byte, error) {
 	if err != nil {
 		return blm, err
 	}
-	BlameDialog(nil, fnm, blm, fb)
+	blameDialog(nil, fnm, blm, fb)
 	return blm, nil
 }
 
 // UpdateAllVCS does an update on any repositories below this one in file tree
 func (fn *Node) UpdateAllVCS() {
-	fn.WidgetWalkDown(func(wi core.Widget, wb *core.WidgetBase) bool {
-		sfn := AsNode(wi)
+	fn.WidgetWalkDown(func(cw core.Widget, cwb *core.WidgetBase) bool {
+		sfn := AsNode(cw)
 		if sfn == nil {
 			return tree.Continue
 		}
@@ -362,53 +356,16 @@ func (fn *Node) UpdateAllVCS() {
 			return tree.Continue
 		}
 		if sfn.DirRepo == nil {
-			if !sfn.DetectVCSRepo(false) {
+			if !sfn.detectVCSRepo(false) {
 				return tree.Continue
 			}
 		}
 		repo := sfn.DirRepo
-		fmt.Printf("Updating %v repository: %s from: %s\n", repo.Vcs(), sfn.MyRelPath(), repo.Remote())
+		fmt.Printf("Updating %v repository: %s from: %s\n", repo.Vcs(), sfn.RelativePath(), repo.Remote())
 		err := repo.Update()
 		if err != nil {
 			fmt.Printf("error: %v\n", err)
 		}
 		return tree.Break
 	})
-}
-
-// VersionControlSystems is a list of supported Version Control Systems.
-// These must match the VCS Types from vcs which in turn
-// is based on masterminds/vcs
-var VersionControlSystems = []string{"git", "svn", "bzr", "hg"}
-
-// IsVersionControlSystem returns true if the given string matches one of the
-// standard VersionControlSystems -- uses lowercase version of str.
-func IsVersionControlSystem(str string) bool {
-	stl := strings.ToLower(str)
-	for _, vcn := range VersionControlSystems {
-		if stl == vcn {
-			return true
-		}
-	}
-	return false
-}
-
-// VersionControlName is the name of a version control system
-type VersionControlName string
-
-func VersionControlNameProper(vc string) VersionControlName {
-	vcl := strings.ToLower(vc)
-	for _, vcnp := range VersionControlSystems {
-		vcnpl := strings.ToLower(vcnp)
-		if strings.Compare(vcl, vcnpl) == 0 {
-			return VersionControlName(vcnp)
-		}
-	}
-	return ""
-}
-
-// Value registers [core.Chooser] as the [core.Value] widget
-// for [VersionControlName]
-func (kn VersionControlName) Value() core.Value {
-	return core.NewChooser().SetStrings(VersionControlSystems...)
 }

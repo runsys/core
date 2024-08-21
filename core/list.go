@@ -37,34 +37,34 @@ import (
 type List struct {
 	ListBase
 
-	// StyleFunc is an optional styling function.
-	StyleFunc ListStyleFunc `copier:"-" display:"-" json:"-" xml:"-"`
+	// ListStyler is an optional styler for list items.
+	ListStyler ListStyler `copier:"-" json:"-" xml:"-"`
 }
 
-// ListStyleFunc is a styling function for custom styling and
+// ListStyler is a styling function for custom styling and
 // configuration of elements in the list.
-type ListStyleFunc func(w Widget, s *styles.Style, row int)
+type ListStyler func(w Widget, s *styles.Style, row int)
 
-func (ls *List) HasStyleFunc() bool {
-	return ls.StyleFunc != nil
+func (ls *List) HasStyler() bool {
+	return ls.ListStyler != nil
 }
 
 func (ls *List) StyleRow(w Widget, idx, fidx int) {
-	if ls.StyleFunc != nil {
-		ls.StyleFunc(w, &w.AsWidget().Styles, idx)
+	if ls.ListStyler != nil {
+		ls.ListStyler(w, &w.AsWidget().Styles, idx)
 	}
 }
-
-////////////////////////////////////////////////////////
-//  ListBase
 
 // note on implementation:
 // * ListGrid handles all the layout logic to start with a minimum number of
 //   rows and then computes the total number visible based on allocated size.
 
 const (
-	ListRowProperty = "sv-row"
-	ListColProperty = "sv-col"
+	// ListRowProperty is the tree property name for the row of a list element.
+	ListRowProperty = "ls-row"
+
+	// ListColProperty is the tree property name for the column of a list element.
+	ListColProperty = "ls-col"
 )
 
 // Lister is the interface used by [ListBase] to
@@ -74,10 +74,6 @@ type Lister interface {
 
 	// AsListBase returns the base for direct access to relevant fields etc
 	AsListBase() *ListBase
-
-	// SliceGrid returns the ListGrid grid Layout widget,
-	// which contains all the fields and values
-	SliceGrid() *ListGrid
 
 	// RowWidgetNs returns number of widgets per row and
 	// offset for index label
@@ -106,15 +102,11 @@ type Lister interface {
 	// StyleValue performs additional value widget styling
 	StyleValue(w Widget, s *styles.Style, row, col int)
 
-	// HasStyleFunc returns whether there is a custom style function.
-	HasStyleFunc() bool
+	// HasStyler returns whether there is a custom style function.
+	HasStyler() bool
 
 	// StyleRow calls a custom style function on given row (and field)
 	StyleRow(w Widget, idx, fidx int)
-
-	// RowFirstWidget returns the first widget for given row
-	// (could be index or not) -- false if out of range
-	RowFirstWidget(row int) (*WidgetBase, bool)
 
 	// RowGrabFocus grabs the focus for the first focusable
 	// widget in given row.
@@ -122,12 +114,12 @@ type Lister interface {
 	// note: grid must have already rendered for focus to be grabbed!
 	RowGrabFocus(row int) *WidgetBase
 
-	// SliceNewAt inserts a new blank element at given
-	// index in the slice. -1 means the end.
-	SliceNewAt(idx int)
+	// NewAt inserts a new blank element at the given index in the slice.
+	// -1 indicates to insert the element at the end.
+	NewAt(idx int)
 
-	// SliceDeleteAt deletes element at given index from slice
-	SliceDeleteAt(idx int)
+	// DeleteAt deletes the element at the given index from the slice.
+	DeleteAt(idx int)
 
 	// MimeDataType returns the data type for mime clipboard
 	// (copy / paste) data e.g., fileinfo.DataJson
@@ -142,20 +134,16 @@ type Lister interface {
 	// PasteAtIndex inserts object(s) from mime data at
 	// (before) given slice index
 	PasteAtIndex(md mimedata.Mimes, idx int)
-
-	MakePasteMenu(m *Scene, md mimedata.Mimes, idx int, mod events.DropMods, fun func())
-	DragStart(e events.Event)
-	DragDrop(e events.Event)
-	DropFinalize(de *events.DragDrop)
-	DropDeleteSource(e events.Event)
 }
+
+var _ Lister = &List{}
 
 // ListBase is the base for [List] and [Table] and any other displays
 // of array-like data. It automatically computes the number of rows that fit
 // within its allocated space, and manages the offset view window into the full
 // list of items, and supports row selection, copy / paste, Drag-n-Drop, etc.
 // Use [ListBase.BindSelect] to make the list designed for item selection.
-type ListBase struct {
+type ListBase struct { //core:no-new
 	Frame
 
 	// Slice is the pointer to the slice that we are viewing.
@@ -168,16 +156,17 @@ type ListBase struct {
 	// at least this amount is displayed.
 	MinRows int `default:"4"`
 
-	// SelectedValue is the current selection value; initially select this value if set.
+	// SelectedValue is the current selection value.
+	// If it is set, it is used as the initially selected value.
 	SelectedValue any `copier:"-" display:"-" json:"-" xml:"-"`
 
-	// index of currently selected item
+	// SelectedIndex is the index of the currently selected item.
 	SelectedIndex int `copier:"-" json:"-" xml:"-"`
 
-	// index of row to select at start
+	// InitSelectedIndex is the index of the row to select at the start.
 	InitSelectedIndex int `copier:"-" json:"-" xml:"-"`
 
-	// list of currently selected slice indexes
+	// SelectedIndexes is a list of currently selected slice indexes.
 	SelectedIndexes map[int]struct{} `set:"-" copier:"-"`
 
 	// lastClick is the last row that has been clicked on.
@@ -186,54 +175,56 @@ type ListBase struct {
 	// rows in quick succession.
 	lastClick int
 
-	// NormalCursor is the cached cursor to display when there
+	// normalCursor is the cached cursor to display when there
 	// is no row being hovered.
-	NormalCursor cursors.Cursor `copier:"-" xml:"-" json:"-" set:"-"`
+	normalCursor cursors.Cursor
 
-	// CurrentCursor is the cached cursor that should currently be
+	// currentCursor is the cached cursor that should currently be
 	// displayed.
-	CurrentCursor cursors.Cursor `copier:"-" xml:"-" json:"-" set:"-"`
+	currentCursor cursors.Cursor
 
-	// SliceUnderlying is the underlying slice value.
-	SliceUnderlying reflect.Value `set:"-" copier:"-" display:"-" json:"-" xml:"-"`
+	// sliceUnderlying is the underlying slice value.
+	sliceUnderlying reflect.Value
 
 	// currently hovered row
 	hoverRow int
 
 	// list of currently dragged indexes
-	DraggedIndexes []int `set:"-" display:"-" copier:"-" json:"-" xml:"-"`
+	draggedIndexes []int
 
-	// total number of rows visible in allocated display size
-	VisRows int `set:"-" edit:"-" copier:"-" json:"-" xml:"-"`
+	// VisibleRows is the total number of rows visible in allocated display size.
+	VisibleRows int `set:"-" edit:"-" copier:"-" json:"-" xml:"-"`
 
-	// starting slice index of visible rows
+	// StartIndex is the starting slice index of visible rows.
 	StartIndex int `set:"-" edit:"-" copier:"-" json:"-" xml:"-"`
 
-	// size of slice
+	// SliceSize is the size of the slice.
 	SliceSize int `set:"-" edit:"-" copier:"-" json:"-" xml:"-"`
 
-	// iteration through the configuration process, reset when a new slice type is set
+	// MakeIter is the iteration through the configuration process,
+	// which is reset when a new slice type is set.
 	MakeIter int `set:"-" edit:"-" copier:"-" json:"-" xml:"-"`
 
 	// temp idx state for e.g., dnd
 	tmpIndex int
 
-	// ElementValue is a [reflect.Value] representation of the underlying element type
+	// elementValue is a [reflect.Value] representation of the underlying element type
 	// which is used whenever there are no slice elements available
-	ElementValue reflect.Value `set:"-" copier:"-" display:"-" json:"-" xml:"-"`
+	elementValue reflect.Value
 
 	// maximum width of value column in chars, if string
 	maxWidth int
 
 	// ReadOnlyKeyNav is whether support key navigation when ReadOnly (default true).
 	// It uses a capture of up / down events to manipulate selection, not focus.
-	ReadOnlyKeyNav bool
+	ReadOnlyKeyNav bool `default:"true"`
 
 	// SelectMode is whether to be in select rows mode or editing mode.
 	SelectMode bool `set:"-" copier:"-" json:"-" xml:"-"`
 
-	// ReadOnlyMultiSelect: if view is ReadOnly, default selection mode is to choose one row only.
-	// If this is true, standard multiple selection logic with modifier keys is instead supported.
+	// ReadOnlyMultiSelect: if list is ReadOnly, default selection mode is to
+	// choose one row only. If this is true, standard multiple selection logic
+	// with modifier keys is instead supported.
 	ReadOnlyMultiSelect bool
 
 	// InFocusGrab is a guard for recursive focus grabbing.
@@ -241,23 +232,25 @@ type ListBase struct {
 
 	// isArray is whether the slice is actually an array.
 	isArray bool
+
+	// ListGrid is the [ListGrid] widget.
+	ListGrid *ListGrid `set:"-" edit:"-" copier:"-" json:"-" xml:"-"`
 }
 
 func (lb *ListBase) WidgetValue() any { return &lb.Slice }
 
 func (lb *ListBase) Init() {
 	lb.Frame.Init()
-	lb.AddContextMenu(lb.ContextMenu)
+	lb.AddContextMenu(lb.contextMenu)
 	lb.InitSelectedIndex = -1
 	lb.hoverRow = -1
 	lb.MinRows = 4
 	lb.ReadOnlyKeyNav = true
-	svi := lb.This.(Lister)
 
 	lb.Styler(func(s *styles.Style) {
 		s.SetAbilities(true, abilities.Clickable, abilities.DoubleClickable, abilities.TripleClickable)
 		s.SetAbilities(!lb.IsReadOnly(), abilities.Draggable, abilities.Droppable)
-		s.Cursor = lb.CurrentCursor
+		s.Cursor = lb.currentCursor
 		s.Direction = styles.Column
 		// absorb horizontal here, vertical in view
 		s.Overflow.X = styles.OverflowAuto
@@ -265,7 +258,7 @@ func (lb *ListBase) Init() {
 	})
 	if !lb.IsReadOnly() {
 		lb.On(events.DragStart, func(e events.Event) {
-			svi.DragStart(e)
+			lb.dragStart(e)
 		})
 		lb.On(events.DragEnter, func(e events.Event) {
 			e.SetHandled()
@@ -274,66 +267,66 @@ func (lb *ListBase) Init() {
 			e.SetHandled()
 		})
 		lb.On(events.Drop, func(e events.Event) {
-			svi.DragDrop(e)
+			lb.dragDrop(e)
 		})
 		lb.On(events.DropDeleteSource, func(e events.Event) {
-			svi.DropDeleteSource(e)
+			lb.dropDeleteSource(e)
 		})
 	}
 	lb.FinalStyler(func(s *styles.Style) {
-		lb.NormalCursor = s.Cursor
+		lb.normalCursor = s.Cursor
 	})
 
 	lb.OnFinal(events.KeyChord, func(e events.Event) {
 		if lb.IsReadOnly() {
 			if lb.ReadOnlyKeyNav {
-				lb.KeyInputReadOnly(e)
+				lb.keyInputReadOnly(e)
 			}
 		} else {
-			lb.KeyInputEditable(e)
+			lb.keyInputEditable(e)
 		}
 	})
 	lb.On(events.MouseMove, func(e events.Event) {
-		row, _, isValid := lb.RowFromEventPos(e)
+		row, _, isValid := lb.rowFromEventPos(e)
 		prevHoverRow := lb.hoverRow
 		if !isValid {
 			lb.hoverRow = -1
-			lb.Styles.Cursor = lb.NormalCursor
+			lb.Styles.Cursor = lb.normalCursor
 		} else {
 			lb.hoverRow = row
 			lb.Styles.Cursor = cursors.Pointer
 		}
-		lb.CurrentCursor = lb.Styles.Cursor
+		lb.currentCursor = lb.Styles.Cursor
 		if lb.hoverRow != prevHoverRow {
 			lb.NeedsRender()
 		}
 	})
 	lb.On(events.MouseDrag, func(e events.Event) {
-		row, idx, isValid := lb.RowFromEventPos(e)
+		row, idx, isValid := lb.rowFromEventPos(e)
 		if !isValid {
 			return
 		}
-		lb.This.(Lister).SliceGrid().AutoScroll(math32.Vec2(0, float32(idx)))
+		lb.ListGrid.AutoScroll(math32.Vec2(0, float32(idx)))
 		prevHoverRow := lb.hoverRow
 		if !isValid {
 			lb.hoverRow = -1
-			lb.Styles.Cursor = lb.NormalCursor
+			lb.Styles.Cursor = lb.normalCursor
 		} else {
 			lb.hoverRow = row
 			lb.Styles.Cursor = cursors.Pointer
 		}
-		lb.CurrentCursor = lb.Styles.Cursor
+		lb.currentCursor = lb.Styles.Cursor
 		if lb.hoverRow != prevHoverRow {
 			lb.NeedsRender()
 		}
 	})
 	lb.OnFirst(events.DoubleClick, func(e events.Event) {
-		row, _, isValid := lb.RowFromEventPos(e)
+		row, _, isValid := lb.rowFromEventPos(e)
 		if !isValid {
 			return
 		}
 		if lb.lastClick != row+lb.StartIndex {
-			lb.This.(Lister).SliceGrid().Send(events.Click, e)
+			lb.ListGrid.Send(events.Click, e)
 			e.SetHandled()
 		}
 	})
@@ -349,7 +342,7 @@ func (lb *ListBase) Init() {
 
 		scrollTo := -1
 		if lb.SelectedValue != nil {
-			idx, ok := SliceIndexByValue(lb.Slice, lb.SelectedValue)
+			idx, ok := sliceIndexByValue(lb.Slice, lb.SelectedValue)
 			if ok {
 				lb.SelectedIndex = idx
 				scrollTo = lb.SelectedIndex
@@ -371,7 +364,7 @@ func (lb *ListBase) Init() {
 		})
 
 		lb.MakeGrid(p, func(p *tree.Plan) {
-			for i := 0; i < lb.VisRows; i++ {
+			for i := 0; i < lb.VisibleRows; i++ {
 				svi.MakeRow(p, i)
 			}
 		})
@@ -402,7 +395,7 @@ func (lb *ListBase) SetSliceBase() {
 	lb.SelectMode = false
 	lb.MakeIter = 0
 	lb.StartIndex = 0
-	lb.VisRows = lb.MinRows
+	lb.VisibleRows = lb.MinRows
 	if !lb.IsReadOnly() {
 		lb.SelectedIndex = -1
 	}
@@ -433,22 +426,17 @@ func (lb *ListBase) SetSlice(sl any) *ListBase {
 
 	lb.SetSliceBase()
 	lb.Slice = sl
-	lb.SliceUnderlying = reflectx.Underlying(reflect.ValueOf(lb.Slice))
+	lb.sliceUnderlying = reflectx.Underlying(reflect.ValueOf(lb.Slice))
 	lb.isArray = reflectx.NonPointerType(reflect.TypeOf(sl)).Kind() == reflect.Array
-	lb.ElementValue = reflectx.SliceElementValue(sl)
+	lb.elementValue = reflectx.SliceElementValue(sl)
 	return lb
 }
 
-// IsNil returns true if the Slice is nil
-func (lb *ListBase) IsNil() bool {
-	return reflectx.AnyIsNil(lb.Slice)
-}
-
-// RowFromEventPos returns the widget row, slice index, and
+// rowFromEventPos returns the widget row, slice index, and
 // whether the index is in slice range, for given event position.
-func (lb *ListBase) RowFromEventPos(e events.Event) (row, idx int, isValid bool) {
-	sg := lb.This.(Lister).SliceGrid()
-	row, _, isValid = sg.IndexFromPixel(e.Pos())
+func (lb *ListBase) rowFromEventPos(e events.Event) (row, idx int, isValid bool) {
+	sg := lb.ListGrid
+	row, _, isValid = sg.indexFromPixel(e.Pos())
 	if !isValid {
 		return
 	}
@@ -459,17 +447,17 @@ func (lb *ListBase) RowFromEventPos(e events.Event) (row, idx int, isValid bool)
 	return
 }
 
-// ClickSelectEvent is a helper for processing selection events
+// clickSelectEvent is a helper for processing selection events
 // based on a mouse click, which could be a double or triple
 // in addition to a regular click.
 // Returns false if no further processing should occur,
 // because the user clicked outside the range of active rows.
-func (lb *ListBase) ClickSelectEvent(e events.Event) bool {
-	row, _, isValid := lb.RowFromEventPos(e)
+func (lb *ListBase) clickSelectEvent(e events.Event) bool {
+	row, _, isValid := lb.rowFromEventPos(e)
 	if !isValid {
 		e.SetHandled()
 	} else {
-		lb.UpdateSelectRow(row, e.SelectMode())
+		lb.updateSelectRow(row, e.SelectMode())
 	}
 	return isValid
 }
@@ -484,9 +472,9 @@ func (lb *ListBase) BindSelect(val *int) *ListBase {
 		lb.SendChange(e)
 	})
 	lb.OnDoubleClick(func(e events.Event) {
-		if lb.ClickSelectEvent(e) {
+		if lb.clickSelectEvent(e) {
 			*val = lb.SelectedIndex
-			lb.Scene.SendKey(keymap.Accept, e) // activate OK button
+			lb.Scene.sendKey(keymap.Accept, e) // activate OK button
 			if lb.Scene.Stage.Type == DialogStage {
 				lb.Scene.Close() // also directly close dialog for value dialogs without OK button
 			}
@@ -497,39 +485,40 @@ func (lb *ListBase) BindSelect(val *int) *ListBase {
 
 func (lb *ListBase) UpdateMaxWidths() {
 	lb.maxWidth = 0
-	npv := reflectx.NonPointerValue(lb.ElementValue)
-	isString := npv.Type().Kind() == reflect.String
+	npv := reflectx.NonPointerValue(lb.elementValue)
+	isString := npv.Type().Kind() == reflect.String && npv.Type() != reflect.TypeFor[icons.Icon]()
 	if !isString || lb.SliceSize == 0 {
 		return
 	}
 	mxw := 0
 	for rw := 0; rw < lb.SliceSize; rw++ {
-		str := reflectx.ToString(lb.SliceElementValue(rw).Interface())
+		str := reflectx.ToString(lb.sliceElementValue(rw).Interface())
 		mxw = max(mxw, len(str))
 	}
 	lb.maxWidth = mxw
 }
 
-// SliceElementValue returns an underlying non-pointer [reflect.Value]
+// sliceElementValue returns an underlying non-pointer [reflect.Value]
 // of slice element at given index or ElementValue if out of range.
-func (lb *ListBase) SliceElementValue(si int) reflect.Value {
+func (lb *ListBase) sliceElementValue(si int) reflect.Value {
 	var val reflect.Value
 	if si < lb.SliceSize {
-		val = reflectx.Underlying(lb.SliceUnderlying.Index(si)) // deal with pointer lists
+		val = reflectx.Underlying(lb.sliceUnderlying.Index(si)) // deal with pointer lists
 	} else {
-		val = lb.ElementValue
+		val = lb.elementValue
 	}
 	if !val.IsValid() {
-		val = lb.ElementValue
+		val = lb.elementValue
 	}
 	return val
 }
 
 func (lb *ListBase) MakeGrid(p *tree.Plan, maker func(p *tree.Plan)) {
 	tree.AddAt(p, "grid", func(w *ListGrid) {
+		lb.ListGrid = w
 		w.Styler(func(s *styles.Style) {
 			nWidgPerRow, _ := lb.This.(Lister).RowWidgetNs()
-			w.MinRows = lb.MinRows
+			w.minRows = lb.MinRows
 			s.Display = styles.Grid
 			s.Columns = nWidgPerRow
 			s.Grow.Set(1, 1)
@@ -542,9 +531,9 @@ func (lb *ListBase) MakeGrid(p *tree.Plan, maker func(p *tree.Plan)) {
 		})
 		oc := func(e events.Event) {
 			lb.SetFocusEvent()
-			row, _, isValid := w.IndexFromPixel(e.Pos())
+			row, _, isValid := w.indexFromPixel(e.Pos())
 			if isValid {
-				lb.UpdateSelectRow(row, e.SelectMode())
+				lb.updateSelectRow(row, e.SelectMode())
 				lb.lastClick = row + lb.StartIndex
 			}
 		}
@@ -573,7 +562,7 @@ func (lb *ListBase) MakeValue(w Value, i int) {
 			s.SetAbilities(false, abilities.Hoverable, abilities.Focusable, abilities.Activatable, abilities.TripleClickable)
 			s.SetReadOnly(true)
 		}
-		row, col := lb.WidgetIndex(w)
+		row, col := lb.widgetIndex(w)
 		row += lb.StartIndex
 		svi.StyleValue(w, s, row, col)
 		if row < lb.SliceSize {
@@ -582,12 +571,15 @@ func (lb *ListBase) MakeValue(w Value, i int) {
 	})
 	wb.OnSelect(func(e events.Event) {
 		e.SetHandled()
-		row, _ := lb.WidgetIndex(w)
-		lb.UpdateSelectRow(row, e.SelectMode())
+		row, _ := lb.widgetIndex(w)
+		lb.updateSelectRow(row, e.SelectMode())
 		lb.lastClick = row + lb.StartIndex
 	})
 	wb.OnDoubleClick(lb.HandleEvent)
 	wb.On(events.ContextMenu, lb.HandleEvent)
+	wb.OnFirst(events.ContextMenu, func(e events.Event) {
+		wb.Send(events.Select, e) // we must select the row for context menu actions
+	})
 	if !lb.IsReadOnly() {
 		wb.OnInput(lb.HandleEvent)
 	}
@@ -597,13 +589,13 @@ func (lb *ListBase) MakeRow(p *tree.Plan, i int) {
 	svi := lb.This.(Lister)
 	si, vi, invis := svi.SliceIndex(i)
 	itxt := strconv.Itoa(i)
-	val := lb.SliceElementValue(vi)
+	val := lb.sliceElementValue(vi)
 
 	if lb.ShowIndexes {
 		lb.MakeGridIndex(p, i, si, itxt, invis)
 	}
 
-	valnm := fmt.Sprintf("value-%s-%s", itxt, reflectx.ShortTypeName(lb.ElementValue.Type()))
+	valnm := fmt.Sprintf("value-%s-%s", itxt, reflectx.ShortTypeName(lb.elementValue.Type()))
 	tree.AddNew(p, valnm, func() Value {
 		return NewValue(val.Addr().Interface(), "")
 	}, func(w Value) {
@@ -617,11 +609,11 @@ func (lb *ListBase) MakeRow(p *tree.Plan, i int) {
 		wb.Updater(func() {
 			wb := w.AsWidget()
 			_, vi, invis := svi.SliceIndex(i)
-			val := lb.SliceElementValue(vi)
+			val := lb.sliceElementValue(vi)
 			Bind(val.Addr().Interface(), w)
 			wb.SetReadOnly(lb.IsReadOnly())
 			wb.SetState(invis, states.Invisible)
-			if lb.This.(Lister).HasStyleFunc() {
+			if lb.This.(Lister).HasStyler() {
 				w.Style()
 			}
 			if invis {
@@ -633,7 +625,7 @@ func (lb *ListBase) MakeRow(p *tree.Plan, i int) {
 }
 
 func (lb *ListBase) MakeGridIndex(p *tree.Plan, i, si int, itxt string, invis bool) {
-	svi := lb.This.(Lister)
+	ls := lb.This.(Lister)
 	tree.AddAt(p, "index-"+itxt, func(w *Text) {
 		w.SetProperty(ListRowProperty, i)
 		w.Styler(func(s *styles.Style) {
@@ -650,14 +642,14 @@ func (lb *ListBase) MakeGridIndex(p *tree.Plan, i, si int, itxt string, invis bo
 		})
 		w.OnSelect(func(e events.Event) {
 			e.SetHandled()
-			lb.UpdateSelectRow(i, e.SelectMode())
+			lb.updateSelectRow(i, e.SelectMode())
 			lb.lastClick = si
 		})
 		w.OnDoubleClick(lb.HandleEvent)
 		w.On(events.ContextMenu, lb.HandleEvent)
 		if !lb.IsReadOnly() {
 			w.On(events.DragStart, func(e events.Event) {
-				svi.DragStart(e)
+				lb.dragStart(e)
 			})
 			w.On(events.DragEnter, func(e events.Event) {
 				e.SetHandled()
@@ -666,14 +658,14 @@ func (lb *ListBase) MakeGridIndex(p *tree.Plan, i, si int, itxt string, invis bo
 				e.SetHandled()
 			})
 			w.On(events.Drop, func(e events.Event) {
-				svi.DragDrop(e)
+				lb.dragDrop(e)
 			})
 			w.On(events.DropDeleteSource, func(e events.Event) {
-				svi.DropDeleteSource(e)
+				lb.dropDeleteSource(e)
 			})
 		}
 		w.Updater(func() {
-			si, _, invis := svi.SliceIndex(i)
+			si, _, invis := ls.SliceIndex(i)
 			sitxt := strconv.Itoa(si)
 			w.SetText(sitxt)
 			w.SetReadOnly(lb.IsReadOnly())
@@ -683,16 +675,6 @@ func (lb *ListBase) MakeGridIndex(p *tree.Plan, i, si int, itxt string, invis bo
 			}
 		})
 	})
-}
-
-// SliceGrid returns the SliceGrid grid frame widget, which contains all the
-// fields and values
-func (lb *ListBase) SliceGrid() *ListGrid {
-	sg := lb.ChildByName("grid", 0)
-	if sg == nil {
-		return nil
-	}
-	return sg.(*ListGrid)
 }
 
 // RowWidgetNs returns number of widgets per row and offset for index label
@@ -709,14 +691,14 @@ func (lb *ListBase) RowWidgetNs() (nWidgPerRow, idxOff int) {
 // UpdateSliceSize updates and returns the size of the slice
 // and sets SliceSize
 func (lb *ListBase) UpdateSliceSize() int {
-	sz := lb.SliceUnderlying.Len()
+	sz := lb.sliceUnderlying.Len()
 	lb.SliceSize = sz
 	return sz
 }
 
-// WidgetIndex returns the row and column indexes for given widget,
+// widgetIndex returns the row and column indexes for given widget,
 // from the properties set during construction.
-func (lb *ListBase) WidgetIndex(w Widget) (row, col int) {
+func (lb *ListBase) widgetIndex(w Widget) (row, col int) {
 	if rwi := w.AsTree().Property(ListRowProperty); rwi != nil {
 		row = rwi.(int)
 	}
@@ -729,8 +711,8 @@ func (lb *ListBase) WidgetIndex(w Widget) (row, col int) {
 // UpdateStartIndex updates StartIndex to fit current view
 func (lb *ListBase) UpdateStartIndex() {
 	sz := lb.This.(Lister).UpdateSliceSize()
-	if sz > lb.VisRows {
-		lastSt := sz - lb.VisRows
+	if sz > lb.VisibleRows {
+		lastSt := sz - lb.VisibleRows
 		lb.StartIndex = min(lastSt, lb.StartIndex)
 		lb.StartIndex = max(0, lb.StartIndex)
 	} else {
@@ -738,68 +720,47 @@ func (lb *ListBase) UpdateStartIndex() {
 	}
 }
 
-// UpdateScroll updates the scroll value
-func (lb *ListBase) UpdateScroll() {
-	sg := lb.This.(Lister).SliceGrid()
+// updateScroll updates the scroll value
+func (lb *ListBase) updateScroll() {
+	sg := lb.ListGrid
 	if sg == nil {
 		return
 	}
-	sg.UpdateScroll(lb.StartIndex)
+	sg.updateScroll(lb.StartIndex)
 }
 
-// SliceNewAtRow inserts a new blank element at given display row
-func (lb *ListBase) SliceNewAtRow(row int) {
-	lb.This.(Lister).SliceNewAt(lb.StartIndex + row)
+// newAtRow inserts a new blank element at the given display row.
+func (lb *ListBase) newAtRow(row int) {
+	lb.This.(Lister).NewAt(lb.StartIndex + row)
 }
 
-// SliceNewAt inserts a new blank element at given index in the slice -- -1
-// means the end
-func (lb *ListBase) SliceNewAt(idx int) {
+// NewAt inserts a new blank element at the given index in the slice.
+// -1 indicates to insert the element at the end.
+func (lb *ListBase) NewAt(idx int) {
 	if lb.isArray {
 		return
 	}
 
-	lb.SliceNewAtSelect(idx)
-
-	sltyp := reflectx.SliceElementType(lb.Slice) // has pointer if it is there
-	slptr := sltyp.Kind() == reflect.Pointer
-	sz := lb.SliceSize
-	svnp := lb.SliceUnderlying
-
-	nval := reflect.New(reflectx.NonPointerType(sltyp)) // make the concrete el
-	if !slptr {
-		nval = nval.Elem() // use concrete value
-	}
-	svnp = reflect.Append(svnp, nval)
-	if idx >= 0 && idx < sz {
-		reflect.Copy(svnp.Slice(idx+1, sz+1), svnp.Slice(idx, sz))
-		svnp.Index(idx).Set(nval)
-	}
-	svnp.Set(svnp)
+	lb.NewAtSelect(idx)
+	reflectx.SliceNewAt(lb.Slice, idx)
 	if idx < 0 {
-		idx = sz
+		idx = lb.SliceSize
 	}
-
-	lb.SliceUnderlying = reflectx.NonPointerValue(reflect.ValueOf(lb.Slice)) // need to update after changes
 
 	lb.This.(Lister).UpdateSliceSize()
-
-	lb.SelectIndexAction(idx, events.SelectOne)
-	lb.SendChange()
-	lb.Update()
+	lb.SelectIndexEvent(idx, events.SelectOne)
+	lb.UpdateChange()
 	lb.IndexGrabFocus(idx)
 }
 
-// SliceDeleteAtRow deletes element at given display row
-// if update is true, then update the grid after
-func (lb *ListBase) SliceDeleteAtRow(row int) {
-	lb.This.(Lister).SliceDeleteAt(lb.StartIndex + row)
+// deleteAtRow deletes the element at the given display row.
+func (lb *ListBase) deleteAtRow(row int) {
+	lb.This.(Lister).DeleteAt(lb.StartIndex + row)
 }
 
-// SliceNewAtSelect updates selected rows based on
-// inserting new element at given index.
-// must be called with successful SliceNewAt
-func (lb *ListBase) SliceNewAtSelect(i int) {
+// NewAtSelect updates the selected rows based on
+// inserting a new element at the given index.
+func (lb *ListBase) NewAtSelect(i int) {
 	sl := lb.SelectedIndexesList(false) // ascending
 	lb.ResetSelectedIndexes()
 	for _, ix := range sl {
@@ -810,10 +771,9 @@ func (lb *ListBase) SliceNewAtSelect(i int) {
 	}
 }
 
-// SliceDeleteAtSelect updates selected rows based on
-// deleting element at given index
-// must be called with successful SliceDeleteAt
-func (lb *ListBase) SliceDeleteAtSelect(i int) {
+// DeleteAtSelect updates the selected rows based on
+// deleting the element at the given index.
+func (lb *ListBase) DeleteAtSelect(i int) {
 	sl := lb.SelectedIndexesList(true) // desscending
 	lb.ResetSelectedIndexes()
 	for _, ix := range sl {
@@ -827,26 +787,20 @@ func (lb *ListBase) SliceDeleteAtSelect(i int) {
 	}
 }
 
-// SliceDeleteAt deletes element at given index from slice
-func (lb *ListBase) SliceDeleteAt(i int) {
+// DeleteAt deletes the element at the given index from the slice.
+func (lb *ListBase) DeleteAt(i int) {
 	if lb.isArray {
 		return
 	}
 	if i < 0 || i >= lb.SliceSize {
 		return
 	}
-
-	lb.SliceDeleteAtSelect(i)
-
+	lb.DeleteAtSelect(i)
 	reflectx.SliceDeleteAt(lb.Slice, i)
-
 	lb.This.(Lister).UpdateSliceSize()
-
-	lb.SendChange()
-	lb.Update()
+	lb.UpdateChange()
 }
 
-// MakeToolbar configures a [Toolbar] for this view
 func (lb *ListBase) MakeToolbar(p *tree.Plan) {
 	if reflectx.AnyIsNil(lb.Slice) {
 		return
@@ -857,7 +811,7 @@ func (lb *ListBase) MakeToolbar(p *tree.Plan) {
 	tree.Add(p, func(w *Button) {
 		w.SetText("Add").SetIcon(icons.Add).SetTooltip("add a new element to the slice").
 			OnClick(func(e events.Event) {
-				lb.This.(Lister).SliceNewAt(-1)
+				lb.This.(Lister).NewAt(-1)
 			})
 	})
 }
@@ -867,30 +821,25 @@ func (lb *ListBase) MakeToolbar(p *tree.Plan) {
 //  NOTE: row = physical GUI display row, idx = slice index
 //  not the same!
 
-// SliceValue returns value interface at given slice index.
-func (lb *ListBase) SliceValue(idx int) any {
+// sliceValue returns value interface at given slice index.
+func (lb *ListBase) sliceValue(idx int) any {
 	if idx < 0 || idx >= lb.SliceSize {
 		fmt.Printf("core.ListBase: slice index out of range: %v\n", idx)
 		return nil
 	}
-	val := reflectx.UnderlyingPointer(lb.SliceUnderlying.Index(idx)) // deal with pointer lists
+	val := reflectx.UnderlyingPointer(lb.sliceUnderlying.Index(idx)) // deal with pointer lists
 	vali := val.Interface()
 	return vali
 }
 
 // IsRowInBounds returns true if disp row is in bounds
 func (lb *ListBase) IsRowInBounds(row int) bool {
-	return row >= 0 && row < lb.VisRows
+	return row >= 0 && row < lb.VisibleRows
 }
 
-// IsIndexVisible returns true if slice index is currently visible
-func (lb *ListBase) IsIndexVisible(idx int) bool {
-	return lb.IsRowInBounds(idx - lb.StartIndex)
-}
-
-// RowFirstWidget returns the first widget for given row (could be index or
+// rowFirstWidget returns the first widget for given row (could be index or
 // not) -- false if out of range
-func (lb *ListBase) RowFirstWidget(row int) (*WidgetBase, bool) {
+func (lb *ListBase) rowFirstWidget(row int) (*WidgetBase, bool) {
 	if !lb.ShowIndexes {
 		return nil, false
 	}
@@ -898,7 +847,7 @@ func (lb *ListBase) RowFirstWidget(row int) (*WidgetBase, bool) {
 		return nil, false
 	}
 	nWidgPerRow, _ := lb.This.(Lister).RowWidgetNs()
-	sg := lb.This.(Lister).SliceGrid()
+	sg := lb.ListGrid
 	w := sg.Children[row*nWidgPerRow].(Widget).AsWidget()
 	return w, true
 }
@@ -912,7 +861,7 @@ func (lb *ListBase) RowGrabFocus(row int) *WidgetBase {
 	}
 	nWidgPerRow, idxOff := lb.This.(Lister).RowWidgetNs()
 	ridx := nWidgPerRow * row
-	sg := lb.This.(Lister).SliceGrid()
+	sg := lb.ListGrid
 	w := sg.Child(ridx + idxOff).(Widget).AsWidget()
 	if w.StateIs(states.Focused) {
 		return w
@@ -930,28 +879,28 @@ func (lb *ListBase) IndexGrabFocus(idx int) *WidgetBase {
 	return lb.This.(Lister).RowGrabFocus(idx - lb.StartIndex)
 }
 
-// IndexPos returns center of window position of index label for idx (ContextMenuPos)
-func (lb *ListBase) IndexPos(idx int) image.Point {
+// indexPos returns center of window position of index label for idx (ContextMenuPos)
+func (lb *ListBase) indexPos(idx int) image.Point {
 	row := idx - lb.StartIndex
 	if row < 0 {
 		row = 0
 	}
-	if row > lb.VisRows-1 {
-		row = lb.VisRows - 1
+	if row > lb.VisibleRows-1 {
+		row = lb.VisibleRows - 1
 	}
 	var pos image.Point
-	w, ok := lb.This.(Lister).RowFirstWidget(row)
+	w, ok := lb.rowFirstWidget(row)
 	if ok {
 		pos = w.ContextMenuPos(nil)
 	}
 	return pos
 }
 
-// RowFromPos returns the row that contains given vertical position, false if not found
-func (lb *ListBase) RowFromPos(posY int) (int, bool) {
+// rowFromPos returns the row that contains given vertical position, false if not found
+func (lb *ListBase) rowFromPos(posY int) (int, bool) {
 	// todo: could optimize search to approx loc, and search up / down from there
-	for rw := 0; rw < lb.VisRows; rw++ {
-		w, ok := lb.This.(Lister).RowFirstWidget(rw)
+	for rw := 0; rw < lb.VisibleRows; rw++ {
+		w, ok := lb.rowFirstWidget(rw)
 		if ok {
 			if w.Geom.TotalBBox.Min.Y < posY && posY < w.Geom.TotalBBox.Max.Y {
 				return rw, true
@@ -961,9 +910,9 @@ func (lb *ListBase) RowFromPos(posY int) (int, bool) {
 	return -1, false
 }
 
-// IndexFromPos returns the idx that contains given vertical position, false if not found
-func (lb *ListBase) IndexFromPos(posY int) (int, bool) {
-	row, ok := lb.RowFromPos(posY)
+// indexFromPos returns the idx that contains given vertical position, false if not found
+func (lb *ListBase) indexFromPos(posY int) (int, bool) {
+	row, ok := lb.rowFromPos(posY)
 	if !ok {
 		return -1, false
 	}
@@ -975,19 +924,19 @@ func (lb *ListBase) IndexFromPos(posY int) (int, bool) {
 // This version does not update the slicegrid.
 // Just computes the StartIndex and updates the scrollbar
 func (lb *ListBase) ScrollToIndexNoUpdate(idx int) bool {
-	if lb.VisRows == 0 {
+	if lb.VisibleRows == 0 {
 		return false
 	}
 	if idx < lb.StartIndex {
 		lb.StartIndex = idx
 		lb.StartIndex = max(0, lb.StartIndex)
-		lb.UpdateScroll()
+		lb.updateScroll()
 		return true
 	}
-	if idx >= lb.StartIndex+lb.VisRows {
-		lb.StartIndex = idx - (lb.VisRows - 4)
+	if idx >= lb.StartIndex+lb.VisibleRows {
+		lb.StartIndex = idx - (lb.VisibleRows - 4)
 		lb.StartIndex = max(0, lb.StartIndex)
-		lb.UpdateScroll()
+		lb.updateScroll()
 		return true
 	}
 	return false
@@ -1003,25 +952,9 @@ func (lb *ListBase) ScrollToIndex(idx int) bool {
 	return update
 }
 
-// SelectValue sets SelVal and attempts to find corresponding row, setting
-// SelectedIndex and selecting row if found -- returns true if found, false
-// otherwise.
-func (lb *ListBase) SelectValue(val string) bool {
-	lb.SelectedValue = val
-	if lb.SelectedValue != nil {
-		idx, _ := SliceIndexByValue(lb.Slice, lb.SelectedValue)
-		if idx >= 0 {
-			lb.UpdateSelectIndex(idx, true, events.SelectOne)
-			lb.ScrollToIndex(idx)
-			return true
-		}
-	}
-	return false
-}
-
-// SliceIndexByValue searches for first index that contains given value in slice
-// -- returns false if not found
-func SliceIndexByValue(slc any, fldVal any) (int, bool) {
+// sliceIndexByValue searches for first index that contains given value in slice;
+// returns false if not found
+func sliceIndexByValue(slc any, fldVal any) (int, bool) {
 	svnp := reflectx.NonPointerValue(reflect.ValueOf(slc))
 	sz := svnp.Len()
 	for idx := 0; idx < sz; idx++ {
@@ -1033,26 +966,23 @@ func SliceIndexByValue(slc any, fldVal any) (int, bool) {
 	return -1, false
 }
 
-/////////////////////////////////////////////////////////////////////////////
-//    Moving
-
-// MoveDown moves the selection down to next row, using given select mode
+// moveDown moves the selection down to next row, using given select mode
 // (from keyboard modifiers) -- returns newly selected row or -1 if failed
-func (lb *ListBase) MoveDown(selMode events.SelectModes) int {
+func (lb *ListBase) moveDown(selMode events.SelectModes) int {
 	if lb.SelectedIndex >= lb.SliceSize-1 {
 		lb.SelectedIndex = lb.SliceSize - 1
 		return -1
 	}
 	lb.SelectedIndex++
-	lb.SelectIndexAction(lb.SelectedIndex, selMode)
+	lb.SelectIndexEvent(lb.SelectedIndex, selMode)
 	return lb.SelectedIndex
 }
 
-// MoveDownAction moves the selection down to next row, using given select
+// moveDownEvent moves the selection down to next row, using given select
 // mode (from keyboard modifiers) -- and emits select event for newly selected
 // row
-func (lb *ListBase) MoveDownAction(selMode events.SelectModes) int {
-	nidx := lb.MoveDown(selMode)
+func (lb *ListBase) moveDownEvent(selMode events.SelectModes) int {
+	nidx := lb.moveDown(selMode)
 	if nidx >= 0 {
 		lb.ScrollToIndex(nidx)
 		lb.Send(events.Select) // todo: need to do this for the item?
@@ -1060,22 +990,22 @@ func (lb *ListBase) MoveDownAction(selMode events.SelectModes) int {
 	return nidx
 }
 
-// MoveUp moves the selection up to previous idx, using given select mode
+// moveUp moves the selection up to previous idx, using given select mode
 // (from keyboard modifiers) -- returns newly selected idx or -1 if failed
-func (lb *ListBase) MoveUp(selMode events.SelectModes) int {
+func (lb *ListBase) moveUp(selMode events.SelectModes) int {
 	if lb.SelectedIndex <= 0 {
 		lb.SelectedIndex = 0
 		return -1
 	}
 	lb.SelectedIndex--
-	lb.SelectIndexAction(lb.SelectedIndex, selMode)
+	lb.SelectIndexEvent(lb.SelectedIndex, selMode)
 	return lb.SelectedIndex
 }
 
-// MoveUpAction moves the selection up to previous idx, using given select
+// moveUpEvent moves the selection up to previous idx, using given select
 // mode (from keyboard modifiers) -- and emits select event for newly selected idx
-func (lb *ListBase) MoveUpAction(selMode events.SelectModes) int {
-	nidx := lb.MoveUp(selMode)
+func (lb *ListBase) moveUpEvent(selMode events.SelectModes) int {
+	nidx := lb.moveUp(selMode)
 	if nidx >= 0 {
 		lb.ScrollToIndex(nidx)
 		lb.Send(events.Select)
@@ -1083,23 +1013,23 @@ func (lb *ListBase) MoveUpAction(selMode events.SelectModes) int {
 	return nidx
 }
 
-// MovePageDown moves the selection down to next page, using given select mode
+// movePageDown moves the selection down to next page, using given select mode
 // (from keyboard modifiers) -- returns newly selected idx or -1 if failed
-func (lb *ListBase) MovePageDown(selMode events.SelectModes) int {
+func (lb *ListBase) movePageDown(selMode events.SelectModes) int {
 	if lb.SelectedIndex >= lb.SliceSize-1 {
 		lb.SelectedIndex = lb.SliceSize - 1
 		return -1
 	}
-	lb.SelectedIndex += lb.VisRows
+	lb.SelectedIndex += lb.VisibleRows
 	lb.SelectedIndex = min(lb.SelectedIndex, lb.SliceSize-1)
-	lb.SelectIndexAction(lb.SelectedIndex, selMode)
+	lb.SelectIndexEvent(lb.SelectedIndex, selMode)
 	return lb.SelectedIndex
 }
 
-// MovePageDownAction moves the selection down to next page, using given select
+// movePageDownEvent moves the selection down to next page, using given select
 // mode (from keyboard modifiers) -- and emits select event for newly selected idx
-func (lb *ListBase) MovePageDownAction(selMode events.SelectModes) int {
-	nidx := lb.MovePageDown(selMode)
+func (lb *ListBase) movePageDownEvent(selMode events.SelectModes) int {
+	nidx := lb.movePageDown(selMode)
 	if nidx >= 0 {
 		lb.ScrollToIndex(nidx)
 		lb.Send(events.Select)
@@ -1107,23 +1037,23 @@ func (lb *ListBase) MovePageDownAction(selMode events.SelectModes) int {
 	return nidx
 }
 
-// MovePageUp moves the selection up to previous page, using given select mode
+// movePageUp moves the selection up to previous page, using given select mode
 // (from keyboard modifiers) -- returns newly selected idx or -1 if failed
-func (lb *ListBase) MovePageUp(selMode events.SelectModes) int {
+func (lb *ListBase) movePageUp(selMode events.SelectModes) int {
 	if lb.SelectedIndex <= 0 {
 		lb.SelectedIndex = 0
 		return -1
 	}
-	lb.SelectedIndex -= lb.VisRows
+	lb.SelectedIndex -= lb.VisibleRows
 	lb.SelectedIndex = max(0, lb.SelectedIndex)
-	lb.SelectIndexAction(lb.SelectedIndex, selMode)
+	lb.SelectIndexEvent(lb.SelectedIndex, selMode)
 	return lb.SelectedIndex
 }
 
-// MovePageUpAction moves the selection up to previous page, using given select
+// movePageUpEvent moves the selection up to previous page, using given select
 // mode (from keyboard modifiers) -- and emits select event for newly selected idx
-func (lb *ListBase) MovePageUpAction(selMode events.SelectModes) int {
-	nidx := lb.MovePageUp(selMode)
+func (lb *ListBase) movePageUpEvent(selMode events.SelectModes) int {
+	nidx := lb.movePageUp(selMode)
 	if nidx >= 0 {
 		lb.ScrollToIndex(nidx)
 		lb.Send(events.Select)
@@ -1134,20 +1064,20 @@ func (lb *ListBase) MovePageUpAction(selMode events.SelectModes) int {
 //////////////////////////////////////////////////////////
 //    Selection: user operates on the index labels
 
-// UpdateSelectRow updates the selection for the given row
-func (lb *ListBase) UpdateSelectRow(row int, selMode events.SelectModes) {
+// updateSelectRow updates the selection for the given row
+func (lb *ListBase) updateSelectRow(row int, selMode events.SelectModes) {
 	idx := row + lb.StartIndex
 	if row < 0 || idx >= lb.SliceSize {
 		return
 	}
-	sel := !lb.IndexIsSelected(idx)
-	lb.UpdateSelectIndex(idx, sel, selMode)
+	sel := !lb.indexIsSelected(idx)
+	lb.updateSelectIndex(idx, sel, selMode)
 }
 
-// UpdateSelectIndex updates the selection for the given index
-func (lb *ListBase) UpdateSelectIndex(idx int, sel bool, selMode events.SelectModes) {
+// updateSelectIndex updates the selection for the given index
+func (lb *ListBase) updateSelectIndex(idx int, sel bool, selMode events.SelectModes) {
 	if lb.IsReadOnly() && !lb.ReadOnlyMultiSelect {
-		lb.UnselectAllIndexes()
+		lb.unselectAllIndexes()
 		if sel || lb.SelectedIndex == idx {
 			lb.SelectedIndex = idx
 			lb.SelectIndex(idx)
@@ -1155,12 +1085,12 @@ func (lb *ListBase) UpdateSelectIndex(idx int, sel bool, selMode events.SelectMo
 		lb.Send(events.Select)
 		lb.Restyle()
 	} else {
-		lb.SelectIndexAction(idx, selMode)
+		lb.SelectIndexEvent(idx, selMode)
 	}
 }
 
-// IndexIsSelected returns the selected status of given slice index
-func (lb *ListBase) IndexIsSelected(idx int) bool {
+// indexIsSelected returns the selected status of given slice index
+func (lb *ListBase) indexIsSelected(idx int) bool {
 	if lb.IsReadOnly() && !lb.ReadOnlyMultiSelect {
 		return idx == lb.SelectedIndex
 	}
@@ -1204,21 +1134,21 @@ func (lb *ListBase) SelectIndex(idx int) {
 	lb.SelectedIndexes[idx] = struct{}{}
 }
 
-// UnselectIndex unselects given idx (if selected)
-func (lb *ListBase) UnselectIndex(idx int) {
-	if lb.IndexIsSelected(idx) {
+// unselectIndex unselects given idx (if selected)
+func (lb *ListBase) unselectIndex(idx int) {
+	if lb.indexIsSelected(idx) {
 		delete(lb.SelectedIndexes, idx)
 	}
 }
 
-// UnselectAllIndexes unselects all selected idxs
-func (lb *ListBase) UnselectAllIndexes() {
+// unselectAllIndexes unselects all selected idxs
+func (lb *ListBase) unselectAllIndexes() {
 	lb.ResetSelectedIndexes()
 }
 
-// SelectAllIndexes selects all idxs
-func (lb *ListBase) SelectAllIndexes() {
-	lb.UnselectAllIndexes()
+// selectAllIndexes selects all idxs
+func (lb *ListBase) selectAllIndexes() {
+	lb.unselectAllIndexes()
 	lb.SelectedIndexes = make(map[int]struct{}, lb.SliceSize)
 	for idx := 0; idx < lb.SliceSize; idx++ {
 		lb.SelectedIndexes[idx] = struct{}{}
@@ -1226,10 +1156,10 @@ func (lb *ListBase) SelectAllIndexes() {
 	lb.NeedsRender()
 }
 
-// SelectIndexAction is called when a select action has been received (e.g., a
+// SelectIndexEvent is called when a select event has been received (e.g., a
 // mouse click) -- translates into selection updates -- gets selection mode
 // from mouse event (ExtendContinuous, ExtendOne)
-func (lb *ListBase) SelectIndexAction(idx int, mode events.SelectModes) {
+func (lb *ListBase) SelectIndexEvent(idx int, mode events.SelectModes) {
 	if mode == events.NoSelect {
 		return
 	}
@@ -1242,15 +1172,15 @@ func (lb *ListBase) SelectIndexAction(idx int, mode events.SelectModes) {
 
 	switch mode {
 	case events.SelectOne:
-		if lb.IndexIsSelected(idx) {
+		if lb.indexIsSelected(idx) {
 			if len(lb.SelectedIndexes) > 1 {
-				lb.UnselectAllIndexes()
+				lb.unselectAllIndexes()
 			}
 			lb.SelectedIndex = idx
 			lb.SelectIndex(idx)
 			lb.IndexGrabFocus(idx)
 		} else {
-			lb.UnselectAllIndexes()
+			lb.unselectAllIndexes()
 			lb.SelectedIndex = idx
 			lb.SelectIndex(idx)
 			lb.IndexGrabFocus(idx)
@@ -1278,12 +1208,12 @@ func (lb *ListBase) SelectIndexAction(idx int, mode events.SelectModes) {
 			lb.SelectIndex(idx)
 			if idx < minIndex {
 				for cidx < minIndex {
-					r := lb.MoveDown(events.SelectQuiet) // just select
+					r := lb.moveDown(events.SelectQuiet) // just select
 					cidx = r
 				}
 			} else if idx > maxIndex {
 				for cidx > maxIndex {
-					r := lb.MoveUp(events.SelectQuiet) // just select
+					r := lb.moveUp(events.SelectQuiet) // just select
 					cidx = r
 				}
 			}
@@ -1291,8 +1221,8 @@ func (lb *ListBase) SelectIndexAction(idx int, mode events.SelectModes) {
 			lb.Send(events.Select) //  sv.SelectedIndex)
 		}
 	case events.ExtendOne:
-		if lb.IndexIsSelected(idx) {
-			lb.UnselectIndexAction(idx)
+		if lb.indexIsSelected(idx) {
+			lb.unselectIndexEvent(idx)
 			lb.Send(events.Select) //  sv.SelectedIndex)
 		} else {
 			lb.SelectedIndex = idx
@@ -1302,30 +1232,30 @@ func (lb *ListBase) SelectIndexAction(idx int, mode events.SelectModes) {
 		}
 	case events.Unselect:
 		lb.SelectedIndex = idx
-		lb.UnselectIndexAction(idx)
+		lb.unselectIndexEvent(idx)
 	case events.SelectQuiet:
 		lb.SelectedIndex = idx
 		lb.SelectIndex(idx)
 	case events.UnselectQuiet:
 		lb.SelectedIndex = idx
-		lb.UnselectIndex(idx)
+		lb.unselectIndex(idx)
 	}
 	lb.Restyle()
 }
 
-// UnselectIndexAction unselects this idx (if selected) -- and emits a signal
-func (lb *ListBase) UnselectIndexAction(idx int) {
-	if lb.IndexIsSelected(idx) {
-		lb.UnselectIndex(idx)
+// unselectIndexEvent unselects this idx (if selected) -- and emits a signal
+func (lb *ListBase) unselectIndexEvent(idx int) {
+	if lb.indexIsSelected(idx) {
+		lb.unselectIndex(idx)
 	}
 }
 
 ///////////////////////////////////////////////////
 //    Copy / Cut / Paste
 
-// MimeDataIndex adds mimedata for given idx: an application/json of the struct
-func (lb *ListBase) MimeDataIndex(md *mimedata.Mimes, idx int) {
-	val := lb.SliceValue(idx)
+// mimeDataIndex adds mimedata for given idx: an application/json of the struct
+func (lb *ListBase) mimeDataIndex(md *mimedata.Mimes, idx int) {
+	val := lb.sliceValue(idx)
 	b, err := json.MarshalIndent(val, "", "  ")
 	if err == nil {
 		*md = append(*md, &mimedata.Data{Type: fileinfo.DataJson, Data: b})
@@ -1334,9 +1264,9 @@ func (lb *ListBase) MimeDataIndex(md *mimedata.Mimes, idx int) {
 	}
 }
 
-// FromMimeData creates a slice of structs from mime data
-func (lb *ListBase) FromMimeData(md mimedata.Mimes) []any {
-	svtyp := lb.SliceUnderlying.Type()
+// fromMimeData creates a slice of structs from mime data
+func (lb *ListBase) fromMimeData(md mimedata.Mimes) []any {
+	svtyp := lb.sliceUnderlying.Type()
 	sl := make([]any, 0, len(md))
 	for _, d := range md {
 		if d.Type == fileinfo.DataJson {
@@ -1367,13 +1297,13 @@ func (lb *ListBase) CopySelectToMime() mimedata.Mimes {
 	ixs := lb.SelectedIndexesList(false) // ascending
 	md := make(mimedata.Mimes, 0, nitms)
 	for _, i := range ixs {
-		lb.MimeDataIndex(&md, i)
+		lb.mimeDataIndex(&md, i)
 	}
 	return md
 }
 
-// CopyIndexes copies selected idxs to system.Clipboard, optionally resetting the selection
-func (lb *ListBase) CopyIndexes(reset bool) { //types:add
+// copyIndexes copies selected idxs to system.Clipboard, optionally resetting the selection
+func (lb *ListBase) copyIndexes(reset bool) { //types:add
 	nitms := len(lb.SelectedIndexes)
 	if nitms == 0 {
 		return
@@ -1383,54 +1313,40 @@ func (lb *ListBase) CopyIndexes(reset bool) { //types:add
 		lb.Clipboard().Write(md)
 	}
 	if reset {
-		lb.UnselectAllIndexes()
+		lb.unselectAllIndexes()
 	}
 }
 
-// DeleteIndexes deletes all selected indexes
-func (lb *ListBase) DeleteIndexes() { //types:add
+// cutIndexes copies selected indexes to system.Clipboard and deletes selected indexes
+func (lb *ListBase) cutIndexes() { //types:add
 	if len(lb.SelectedIndexes) == 0 {
 		return
 	}
 
-	ixs := lb.SelectedIndexesList(true) // descending sort
-	for _, i := range ixs {
-		lb.This.(Lister).SliceDeleteAt(i)
-	}
-	lb.SendChange()
-	lb.Update()
-}
-
-// CutIndexes copies selected indexes to system.Clipboard and deletes selected indexes
-func (lb *ListBase) CutIndexes() { //types:add
-	if len(lb.SelectedIndexes) == 0 {
-		return
-	}
-
-	lb.CopyIndexes(false)
+	lb.copyIndexes(false)
 	ixs := lb.SelectedIndexesList(true) // descending sort
 	idx := ixs[0]
-	lb.UnselectAllIndexes()
+	lb.unselectAllIndexes()
 	for _, i := range ixs {
-		lb.This.(Lister).SliceDeleteAt(i)
+		lb.This.(Lister).DeleteAt(i)
 	}
 	lb.SendChange()
-	lb.SelectIndexAction(idx, events.SelectOne)
+	lb.SelectIndexEvent(idx, events.SelectOne)
 	lb.Update()
 }
 
-// PasteIndex pastes clipboard at given idx
-func (lb *ListBase) PasteIndex(idx int) { //types:add
+// pasteIndex pastes clipboard at given idx
+func (lb *ListBase) pasteIndex(idx int) { //types:add
 	lb.tmpIndex = idx
 	dt := lb.This.(Lister).MimeDataType()
 	md := lb.Clipboard().Read([]string{dt})
 	if md != nil {
-		lb.PasteMenu(md, lb.tmpIndex)
+		lb.pasteMenu(md, lb.tmpIndex)
 	}
 }
 
-// MakePasteMenu makes the menu of options for paste events
-func (lb *ListBase) MakePasteMenu(m *Scene, md mimedata.Mimes, idx int, mod events.DropMods, fun func()) {
+// makePasteMenu makes the menu of options for paste events
+func (lb *ListBase) makePasteMenu(m *Scene, md mimedata.Mimes, idx int, mod events.DropMods, fun func()) {
 	svi := lb.This.(Lister)
 	if mod == events.DropCopy {
 		NewButton(m).SetText("Assign to").OnClick(func(e events.Event) {
@@ -1455,37 +1371,36 @@ func (lb *ListBase) MakePasteMenu(m *Scene, md mimedata.Mimes, idx int, mod even
 	NewButton(m).SetText("Cancel")
 }
 
-// PasteMenu performs a paste from the clipboard using given data -- pops up
+// pasteMenu performs a paste from the clipboard using given data -- pops up
 // a menu to determine what specifically to do
-func (lb *ListBase) PasteMenu(md mimedata.Mimes, idx int) {
-	lb.UnselectAllIndexes()
+func (lb *ListBase) pasteMenu(md mimedata.Mimes, idx int) {
+	lb.unselectAllIndexes()
 	mf := func(m *Scene) {
-		lb.MakePasteMenu(m, md, idx, events.DropCopy, nil)
+		lb.makePasteMenu(m, md, idx, events.DropCopy, nil)
 	}
-	pos := lb.IndexPos(idx)
+	pos := lb.indexPos(idx)
 	NewMenu(mf, lb.This.(Widget), pos).Run()
 }
 
 // PasteAssign assigns mime data (only the first one!) to this idx
 func (lb *ListBase) PasteAssign(md mimedata.Mimes, idx int) {
-	sl := lb.FromMimeData(md)
+	sl := lb.fromMimeData(md)
 	if len(sl) == 0 {
 		return
 	}
 	ns := sl[0]
-	lb.SliceUnderlying.Index(idx).Set(reflect.ValueOf(ns).Elem())
-	lb.SendChange()
-	lb.Update()
+	lb.sliceUnderlying.Index(idx).Set(reflect.ValueOf(ns).Elem())
+	lb.UpdateChange()
 }
 
 // PasteAtIndex inserts object(s) from mime data at (before) given slice index
 func (lb *ListBase) PasteAtIndex(md mimedata.Mimes, idx int) {
-	sl := lb.FromMimeData(md)
+	sl := lb.fromMimeData(md)
 	if len(sl) == 0 {
 		return
 	}
 	svl := reflect.ValueOf(lb.Slice)
-	svnp := lb.SliceUnderlying
+	svnp := lb.sliceUnderlying
 
 	for _, ns := range sl {
 		sz := svnp.Len()
@@ -1499,23 +1414,23 @@ func (lb *ListBase) PasteAtIndex(md mimedata.Mimes, idx int) {
 		idx++
 	}
 
-	lb.SliceUnderlying = reflectx.NonPointerValue(reflect.ValueOf(lb.Slice)) // need to update after changes
+	lb.sliceUnderlying = reflectx.NonPointerValue(reflect.ValueOf(lb.Slice)) // need to update after changes
 
 	lb.SendChange()
-	lb.SelectIndexAction(idx, events.SelectOne)
+	lb.SelectIndexEvent(idx, events.SelectOne)
 	lb.Update()
 }
 
-// Duplicate copies selected items and inserts them after current selection --
+// duplicate copies selected items and inserts them after current selection --
 // return idx of start of duplicates if successful, else -1
-func (lb *ListBase) Duplicate() int { //types:add
+func (lb *ListBase) duplicate() int { //types:add
 	nitms := len(lb.SelectedIndexes)
 	if nitms == 0 {
 		return -1
 	}
 	ixs := lb.SelectedIndexesList(true) // descending sort -- last first
 	pasteAt := ixs[0]
-	lb.CopyIndexes(true)
+	lb.copyIndexes(true)
 	dt := lb.This.(Lister).MimeDataType()
 	md := lb.Clipboard().Read([]string{dt})
 	lb.This.(Lister).PasteAtIndex(md, pasteAt)
@@ -1525,29 +1440,29 @@ func (lb *ListBase) Duplicate() int { //types:add
 //////////////////////////////////////////////////////////////////////////////
 //    Drag-n-Drop
 
-// SelectRowIfNone selects the row the mouse is on if there
+// selectRowIfNone selects the row the mouse is on if there
 // are no currently selected items.  Returns false if no valid mouse row.
-func (lb *ListBase) SelectRowIfNone(e events.Event) bool {
+func (lb *ListBase) selectRowIfNone(e events.Event) bool {
 	nitms := len(lb.SelectedIndexes)
 	if nitms > 0 {
 		return true
 	}
-	row, _, isValid := lb.This.(Lister).SliceGrid().IndexFromPixel(e.Pos())
+	row, _, isValid := lb.ListGrid.indexFromPixel(e.Pos())
 	if !isValid {
 		return false
 	}
-	lb.UpdateSelectRow(row, e.SelectMode())
+	lb.updateSelectRow(row, e.SelectMode())
 	return true
 }
 
-// MousePosInGrid returns true if the event mouse position is
+// mousePosInGrid returns true if the event mouse position is
 // located within the slicegrid.
-func (lb *ListBase) MousePosInGrid(e events.Event) bool {
-	return lb.This.(Lister).SliceGrid().MousePosInGrid(e.Pos())
+func (lb *ListBase) mousePosInGrid(e events.Event) bool {
+	return lb.ListGrid.mousePosInGrid(e.Pos())
 }
 
-func (lb *ListBase) DragStart(e events.Event) {
-	if !lb.SelectRowIfNone(e) || !lb.MousePosInGrid(e) {
+func (lb *ListBase) dragStart(e events.Event) {
+	if !lb.selectRowIfNone(e) || !lb.mousePosInGrid(e) {
 		return
 	}
 	ixs := lb.SelectedIndexesList(false) // ascending
@@ -1555,86 +1470,82 @@ func (lb *ListBase) DragStart(e events.Event) {
 		return
 	}
 	md := lb.This.(Lister).CopySelectToMime()
-	w, ok := lb.This.(Lister).RowFirstWidget(ixs[0] - lb.StartIndex)
+	w, ok := lb.rowFirstWidget(ixs[0] - lb.StartIndex)
 	if ok {
-		lb.Scene.Events.DragStart(w, md, e)
+		lb.Scene.Events.dragStart(w, md, e)
 		e.SetHandled()
 		// } else {
 		// 	fmt.Println("List DND programmer error")
 	}
 }
 
-func (lb *ListBase) DragDrop(e events.Event) {
+func (lb *ListBase) dragDrop(e events.Event) {
 	de := e.(*events.DragDrop)
 	if de.Data == nil {
 		return
 	}
-	svi := lb.This.(Lister)
 	pos := de.Pos()
-	idx, ok := lb.IndexFromPos(pos.Y)
+	idx, ok := lb.indexFromPos(pos.Y)
 	if ok {
 		// sv.DraggedIndexes = nil
 		lb.tmpIndex = idx
-		lb.SaveDraggedIndexes(idx)
+		lb.saveDraggedIndexes(idx)
 		md := de.Data.(mimedata.Mimes)
 		mf := func(m *Scene) {
-			lb.Scene.Events.DragMenuAddModText(m, de.DropMod)
-			svi.MakePasteMenu(m, md, idx, de.DropMod, func() {
-				svi.DropFinalize(de)
+			lb.Scene.Events.dragMenuAddModText(m, de.DropMod)
+			lb.makePasteMenu(m, md, idx, de.DropMod, func() {
+				lb.dropFinalize(de)
 			})
 		}
-		pos := lb.IndexPos(lb.tmpIndex)
+		pos := lb.indexPos(lb.tmpIndex)
 		NewMenu(mf, lb.This.(Widget), pos).Run()
 	}
 }
 
-// DropFinalize is called to finalize Drop actions on the Source node.
+// dropFinalize is called to finalize Drop actions on the Source node.
 // Only relevant for DropMod == DropMove.
-func (lb *ListBase) DropFinalize(de *events.DragDrop) {
+func (lb *ListBase) dropFinalize(de *events.DragDrop) {
 	lb.NeedsLayout()
-	lb.UnselectAllIndexes()
-	lb.Scene.Events.DropFinalize(de) // sends DropDeleteSource to Source
+	lb.unselectAllIndexes()
+	lb.Scene.Events.dropFinalize(de) // sends DropDeleteSource to Source
 }
 
-// DropDeleteSource handles delete source event for DropMove case
-func (lb *ListBase) DropDeleteSource(e events.Event) {
-	sort.Slice(lb.DraggedIndexes, func(i, j int) bool {
-		return lb.DraggedIndexes[i] > lb.DraggedIndexes[j]
+// dropDeleteSource handles delete source event for DropMove case
+func (lb *ListBase) dropDeleteSource(e events.Event) {
+	sort.Slice(lb.draggedIndexes, func(i, j int) bool {
+		return lb.draggedIndexes[i] > lb.draggedIndexes[j]
 	})
-	idx := lb.DraggedIndexes[0]
-	for _, i := range lb.DraggedIndexes {
-		lb.This.(Lister).SliceDeleteAt(i)
+	idx := lb.draggedIndexes[0]
+	for _, i := range lb.draggedIndexes {
+		lb.This.(Lister).DeleteAt(i)
 	}
-	lb.DraggedIndexes = nil
-	lb.SelectIndexAction(idx, events.SelectOne)
+	lb.draggedIndexes = nil
+	lb.SelectIndexEvent(idx, events.SelectOne)
 }
 
-// SaveDraggedIndexes saves selectedindexes into dragged indexes
+// saveDraggedIndexes saves selectedindexes into dragged indexes
 // taking into account insertion at idx
-func (lb *ListBase) SaveDraggedIndexes(idx int) {
+func (lb *ListBase) saveDraggedIndexes(idx int) {
 	sz := len(lb.SelectedIndexes)
 	if sz == 0 {
-		lb.DraggedIndexes = nil
+		lb.draggedIndexes = nil
 		return
 	}
 	ixs := lb.SelectedIndexesList(false) // ascending
-	lb.DraggedIndexes = make([]int, len(ixs))
+	lb.draggedIndexes = make([]int, len(ixs))
 	for i, ix := range ixs {
 		if ix > idx {
-			lb.DraggedIndexes[i] = ix + sz // make room for insertion
+			lb.draggedIndexes[i] = ix + sz // make room for insertion
 		} else {
-			lb.DraggedIndexes[i] = ix
+			lb.draggedIndexes[i] = ix
 		}
 	}
 }
 
-//////////////////////////////////////////////////////////////////////////////
-//    Events
-
-func (lb *ListBase) ContextMenu(m *Scene) {
+func (lb *ListBase) contextMenu(m *Scene) {
 	if lb.IsReadOnly() || lb.isArray {
 		NewButton(m).SetText("Copy").SetIcon(icons.Copy).OnClick(func(e events.Event) {
-			lb.CopyIndexes(true)
+			lb.copyIndexes(true)
 		})
 		NewSeparator(m)
 		NewButton(m).SetText("Toggle indexes").SetIcon(icons.Numbers).OnClick(func(e events.Event) {
@@ -1644,23 +1555,23 @@ func (lb *ListBase) ContextMenu(m *Scene) {
 		return
 	}
 	NewButton(m).SetText("Add row").SetIcon(icons.Add).OnClick(func(e events.Event) {
-		lb.SliceNewAtRow((lb.SelectedIndex - lb.StartIndex) + 1)
+		lb.newAtRow((lb.SelectedIndex - lb.StartIndex) + 1)
 	})
 	NewButton(m).SetText("Delete row").SetIcon(icons.Delete).OnClick(func(e events.Event) {
-		lb.SliceDeleteAtRow(lb.SelectedIndex - lb.StartIndex)
+		lb.deleteAtRow(lb.SelectedIndex - lb.StartIndex)
 	})
 	NewSeparator(m)
 	NewButton(m).SetText("Copy").SetIcon(icons.Copy).OnClick(func(e events.Event) {
-		lb.CopyIndexes(true)
+		lb.copyIndexes(true)
 	})
 	NewButton(m).SetText("Cut").SetIcon(icons.Cut).OnClick(func(e events.Event) {
-		lb.CutIndexes()
+		lb.cutIndexes()
 	})
 	NewButton(m).SetText("Paste").SetIcon(icons.Paste).OnClick(func(e events.Event) {
-		lb.PasteIndex(lb.SelectedIndex)
+		lb.pasteIndex(lb.SelectedIndex)
 	})
 	NewButton(m).SetText("Duplicate").SetIcon(icons.Copy).OnClick(func(e events.Event) {
-		lb.Duplicate()
+		lb.duplicate()
 	})
 	NewSeparator(m)
 	NewButton(m).SetText("Toggle indexes").SetIcon(icons.Numbers).OnClick(func(e events.Event) {
@@ -1669,8 +1580,8 @@ func (lb *ListBase) ContextMenu(m *Scene) {
 	})
 }
 
-// KeyInputNav supports multiple selection navigation keys
-func (lb *ListBase) KeyInputNav(kt events.Event) {
+// keyInputNav supports multiple selection navigation keys
+func (lb *ListBase) keyInputNav(kt events.Event) {
 	kf := keymap.Of(kt.KeyChord())
 	selMode := events.SelectModeBits(kt.Modifiers())
 	if selMode == events.SelectOne {
@@ -1680,33 +1591,33 @@ func (lb *ListBase) KeyInputNav(kt events.Event) {
 	}
 	switch kf {
 	case keymap.CancelSelect:
-		lb.UnselectAllIndexes()
+		lb.unselectAllIndexes()
 		lb.SelectMode = false
 		kt.SetHandled()
 	case keymap.MoveDown:
-		lb.MoveDownAction(selMode)
+		lb.moveDownEvent(selMode)
 		kt.SetHandled()
 	case keymap.MoveUp:
-		lb.MoveUpAction(selMode)
+		lb.moveUpEvent(selMode)
 		kt.SetHandled()
 	case keymap.PageDown:
-		lb.MovePageDownAction(selMode)
+		lb.movePageDownEvent(selMode)
 		kt.SetHandled()
 	case keymap.PageUp:
-		lb.MovePageUpAction(selMode)
+		lb.movePageUpEvent(selMode)
 		kt.SetHandled()
 	case keymap.SelectMode:
 		lb.SelectMode = !lb.SelectMode
 		kt.SetHandled()
 	case keymap.SelectAll:
-		lb.SelectAllIndexes()
+		lb.selectAllIndexes()
 		lb.SelectMode = false
 		kt.SetHandled()
 	}
 }
 
-func (lb *ListBase) KeyInputEditable(kt events.Event) {
-	lb.KeyInputNav(kt)
+func (lb *ListBase) keyInputEditable(kt events.Event) {
+	lb.keyInputNav(kt)
 	if kt.IsHandled() {
 		return
 	}
@@ -1719,44 +1630,44 @@ func (lb *ListBase) KeyInputEditable(kt events.Event) {
 	// case keymap.Delete: // too dangerous
 	// 	sv.This.(Lister).SliceDeleteAt(sv.SelectedIndex)
 	// 	sv.SelectMode = false
-	// 	sv.SelectIndexAction(idx, events.SelectOne)
+	// 	sv.SelectIndexEvent(idx, events.SelectOne)
 	// 	kt.SetHandled()
 	case keymap.Duplicate:
-		nidx := lb.Duplicate()
+		nidx := lb.duplicate()
 		lb.SelectMode = false
 		if nidx >= 0 {
-			lb.SelectIndexAction(nidx, events.SelectOne)
+			lb.SelectIndexEvent(nidx, events.SelectOne)
 		}
 		kt.SetHandled()
 	case keymap.Insert:
-		lb.This.(Lister).SliceNewAt(idx)
+		lb.This.(Lister).NewAt(idx)
 		lb.SelectMode = false
-		lb.SelectIndexAction(idx+1, events.SelectOne) // todo: somehow nidx not working
+		lb.SelectIndexEvent(idx+1, events.SelectOne) // todo: somehow nidx not working
 		kt.SetHandled()
 	case keymap.InsertAfter:
-		lb.This.(Lister).SliceNewAt(idx + 1)
+		lb.This.(Lister).NewAt(idx + 1)
 		lb.SelectMode = false
-		lb.SelectIndexAction(idx+1, events.SelectOne)
+		lb.SelectIndexEvent(idx+1, events.SelectOne)
 		kt.SetHandled()
 	case keymap.Copy:
-		lb.CopyIndexes(true)
+		lb.copyIndexes(true)
 		lb.SelectMode = false
-		lb.SelectIndexAction(idx, events.SelectOne)
+		lb.SelectIndexEvent(idx, events.SelectOne)
 		kt.SetHandled()
 	case keymap.Cut:
-		lb.CutIndexes()
+		lb.cutIndexes()
 		lb.SelectMode = false
 		kt.SetHandled()
 	case keymap.Paste:
-		lb.PasteIndex(lb.SelectedIndex)
+		lb.pasteIndex(lb.SelectedIndex)
 		lb.SelectMode = false
 		kt.SetHandled()
 	}
 }
 
-func (lb *ListBase) KeyInputReadOnly(kt events.Event) {
+func (lb *ListBase) keyInputReadOnly(kt events.Event) {
 	if lb.ReadOnlyMultiSelect {
-		lb.KeyInputNav(kt)
+		lb.keyInputNav(kt)
 		if kt.IsHandled() {
 			return
 		}
@@ -1775,25 +1686,25 @@ func (lb *ListBase) KeyInputReadOnly(kt events.Event) {
 		ni := idx + 1
 		if ni < lb.SliceSize {
 			lb.ScrollToIndex(ni)
-			lb.UpdateSelectIndex(ni, true, selMode)
+			lb.updateSelectIndex(ni, true, selMode)
 			kt.SetHandled()
 		}
 	case kf == keymap.MoveUp:
 		ni := idx - 1
 		if ni >= 0 {
 			lb.ScrollToIndex(ni)
-			lb.UpdateSelectIndex(ni, true, selMode)
+			lb.updateSelectIndex(ni, true, selMode)
 			kt.SetHandled()
 		}
 	case kf == keymap.PageDown:
-		ni := min(idx+lb.VisRows-1, lb.SliceSize-1)
+		ni := min(idx+lb.VisibleRows-1, lb.SliceSize-1)
 		lb.ScrollToIndex(ni)
-		lb.UpdateSelectIndex(ni, true, selMode)
+		lb.updateSelectIndex(ni, true, selMode)
 		kt.SetHandled()
 	case kf == keymap.PageUp:
-		ni := max(idx-(lb.VisRows-1), 0)
+		ni := max(idx-(lb.VisibleRows-1), 0)
 		lb.ScrollToIndex(ni)
-		lb.UpdateSelectIndex(ni, true, selMode)
+		lb.updateSelectIndex(ni, true, selMode)
 		kt.SetHandled()
 	case kf == keymap.Enter || kf == keymap.Accept || kt.KeyRune() == ' ':
 		lb.Send(events.DoubleClick, kt)
@@ -1802,48 +1713,45 @@ func (lb *ListBase) KeyInputReadOnly(kt events.Event) {
 }
 
 func (lb *ListBase) SizeFinal() {
-	sg := lb.This.(Lister).SliceGrid()
+	sg := lb.ListGrid
 	if sg == nil {
 		lb.Frame.SizeFinal()
 		return
 	}
 	localIter := 0
-	for (lb.MakeIter < 2 || lb.VisRows != sg.VisRows) && localIter < 2 {
-		if lb.VisRows != sg.VisRows {
-			lb.VisRows = sg.VisRows
+	for (lb.MakeIter < 2 || lb.VisibleRows != sg.visibleRows) && localIter < 2 {
+		if lb.VisibleRows != sg.visibleRows {
+			lb.VisibleRows = sg.visibleRows
 			lb.Update()
 		} else {
 			sg.StyleTree()
 		}
-		sg.SizeFinalUpdateChildrenSizes()
+		sg.sizeFinalUpdateChildrenSizes()
 		lb.MakeIter++
 		localIter++
 	}
 	lb.Frame.SizeFinal()
 }
 
-//////////////////////////////////////////////////////
-// 	ListGrid and Layout
-
-// ListGrid handles the resizing logic for [List], [Table].
-type ListGrid struct {
+// ListGrid handles the resizing logic for all [Lister]s.
+type ListGrid struct { //core:no-new
 	Frame
 
-	// MinRows is set from parent SV
-	MinRows int `set:"-" edit:"-"`
+	// minRows is set from parent [List]
+	minRows int
 
 	// height of a single row, computed during layout
-	RowHeight float32 `set:"-" edit:"-" copier:"-" json:"-" xml:"-"`
+	rowHeight float32
 
 	// total number of rows visible in allocated display size
-	VisRows int `set:"-" edit:"-" copier:"-" json:"-" xml:"-"`
+	visibleRows int
 
 	// Various computed backgrounds
-	BgStripe, BgSelect, BgSelectStripe, BgHover, BgHoverStripe, BgHoverSelect, BgHoverSelectStripe image.Image `set:"-" edit:"-" copier:"-" json:"-" xml:"-"`
+	bgStripe, bgSelect, bgSelectStripe, bgHover, bgHoverStripe, bgHoverSelect, bgHoverSelectStripe image.Image
 
-	// LastBackground is the background for which modified
+	// lastBackground is the background for which modified
 	// backgrounds were computed -- don't update if same
-	LastBackground image.Image
+	lastBackground image.Image
 }
 
 func (lg *ListGrid) Init() {
@@ -1855,26 +1763,26 @@ func (lg *ListGrid) Init() {
 
 func (lg *ListGrid) SizeFromChildren(iter int, pass LayoutPasses) math32.Vector2 {
 	csz := lg.Frame.SizeFromChildren(iter, pass)
-	rht, err := lg.Layout.RowHeight(0, 0)
+	rht, err := lg.layout.rowHeight(0, 0)
 	if err != nil {
 		// fmt.Println("ListGrid Sizing Error:", err)
-		lg.RowHeight = 42
+		lg.rowHeight = 42
 	}
 	if lg.NeedsRebuild() { // rebuilding = reset
-		lg.RowHeight = rht
+		lg.rowHeight = rht
 	} else {
-		lg.RowHeight = max(lg.RowHeight, rht)
+		lg.rowHeight = max(lg.rowHeight, rht)
 	}
-	if lg.RowHeight == 0 {
+	if lg.rowHeight == 0 {
 		// fmt.Println("ListGrid Sizing Error: RowHeight should not be 0!", sg)
-		lg.RowHeight = 42
+		lg.rowHeight = 42
 	}
 	allocHt := lg.Geom.Size.Alloc.Content.Y - lg.Geom.Size.InnerSpace.Y
-	if allocHt > lg.RowHeight {
-		lg.VisRows = int(math32.Floor(allocHt / lg.RowHeight))
+	if allocHt > lg.rowHeight {
+		lg.visibleRows = int(math32.Floor(allocHt / lg.rowHeight))
 	}
-	lg.VisRows = max(lg.VisRows, lg.MinRows)
-	minHt := lg.RowHeight * float32(lg.MinRows)
+	lg.visibleRows = max(lg.visibleRows, lg.minRows)
+	minHt := lg.rowHeight * float32(lg.minRows)
 	// fmt.Println("VisRows:", sg.VisRows, "rh:", sg.RowHeight, "ht:", minHt)
 	// visHt := sg.RowHeight * float32(sg.VisRows)
 	csz.Y = minHt
@@ -1888,15 +1796,15 @@ func (lg *ListGrid) SetScrollParams(d math32.Dims, sb *Slider) {
 	}
 	sb.Min = 0
 	sb.Step = 1
-	if lg.VisRows > 0 {
-		sb.PageStep = float32(lg.VisRows)
+	if lg.visibleRows > 0 {
+		sb.PageStep = float32(lg.visibleRows)
 	} else {
 		sb.PageStep = 10
 	}
 	sb.InputThreshold = sb.Step
 }
 
-func (lg *ListGrid) List() (Lister, *ListBase) {
+func (lg *ListGrid) list() (Lister, *ListBase) {
 	ls := tree.ParentByType[Lister](lg)
 	if ls == nil {
 		return nil, nil
@@ -1909,7 +1817,7 @@ func (lg *ListGrid) ScrollChanged(d math32.Dims, sb *Slider) {
 		lg.Frame.ScrollChanged(d, sb)
 		return
 	}
-	_, sv := lg.List()
+	_, sv := lg.list()
 	if sv == nil {
 		return
 	}
@@ -1921,74 +1829,74 @@ func (lg *ListGrid) ScrollValues(d math32.Dims) (maxSize, visSize, visPct float3
 	if d == math32.X {
 		return lg.Frame.ScrollValues(d)
 	}
-	_, sv := lg.List()
+	_, sv := lg.list()
 	if sv == nil {
 		return
 	}
 	maxSize = float32(max(sv.SliceSize, 1))
-	visSize = float32(lg.VisRows)
+	visSize = float32(lg.visibleRows)
 	visPct = visSize / maxSize
 	return
 }
 
-func (lg *ListGrid) UpdateScroll(idx int) {
-	if !lg.HasScroll[math32.Y] || lg.Scrolls[math32.Y] == nil {
+func (lg *ListGrid) updateScroll(idx int) {
+	if !lg.HasScroll[math32.Y] || lg.scrolls[math32.Y] == nil {
 		return
 	}
-	sb := lg.Scrolls[math32.Y]
+	sb := lg.scrolls[math32.Y]
 	sb.SetValue(float32(idx))
 }
 
-func (lg *ListGrid) UpdateBackgrounds() {
+func (lg *ListGrid) updateBackgrounds() {
 	bg := lg.Styles.ActualBackground
-	if lg.LastBackground == bg {
+	if lg.lastBackground == bg {
 		return
 	}
-	lg.LastBackground = bg
+	lg.lastBackground = bg
 
 	// we take our zebra intensity applied foreground color and then overlay it onto our background color
 
 	zclr := colors.WithAF32(colors.ToUniform(lg.Styles.Color), AppearanceSettings.ZebraStripesWeight())
-	lg.BgStripe = gradient.Apply(bg, func(c color.Color) color.Color {
+	lg.bgStripe = gradient.Apply(bg, func(c color.Color) color.Color {
 		return colors.AlphaBlend(c, zclr)
 	})
 
 	hclr := colors.WithAF32(colors.ToUniform(lg.Styles.Color), 0.08)
-	lg.BgHover = gradient.Apply(bg, func(c color.Color) color.Color {
+	lg.bgHover = gradient.Apply(bg, func(c color.Color) color.Color {
 		return colors.AlphaBlend(c, hclr)
 	})
 
 	zhclr := colors.WithAF32(colors.ToUniform(lg.Styles.Color), AppearanceSettings.ZebraStripesWeight()+0.08)
-	lg.BgHoverStripe = gradient.Apply(bg, func(c color.Color) color.Color {
+	lg.bgHoverStripe = gradient.Apply(bg, func(c color.Color) color.Color {
 		return colors.AlphaBlend(c, zhclr)
 	})
 
-	lg.BgSelect = colors.Scheme.Select.Container
+	lg.bgSelect = colors.Scheme.Select.Container
 
-	lg.BgSelectStripe = colors.Uniform(colors.AlphaBlend(colors.ToUniform(colors.Scheme.Select.Container), zclr))
+	lg.bgSelectStripe = colors.Uniform(colors.AlphaBlend(colors.ToUniform(colors.Scheme.Select.Container), zclr))
 
-	lg.BgHoverSelect = colors.Uniform(colors.AlphaBlend(colors.ToUniform(colors.Scheme.Select.Container), hclr))
+	lg.bgHoverSelect = colors.Uniform(colors.AlphaBlend(colors.ToUniform(colors.Scheme.Select.Container), hclr))
 
-	lg.BgHoverSelectStripe = colors.Uniform(colors.AlphaBlend(colors.ToUniform(colors.Scheme.Select.Container), zhclr))
+	lg.bgHoverSelectStripe = colors.Uniform(colors.AlphaBlend(colors.ToUniform(colors.Scheme.Select.Container), zhclr))
 
 }
 
-func (lg *ListGrid) RowBackground(sel, stripe, hover bool) image.Image {
+func (lg *ListGrid) rowBackground(sel, stripe, hover bool) image.Image {
 	switch {
 	case sel && stripe && hover:
-		return lg.BgHoverSelectStripe
+		return lg.bgHoverSelectStripe
 	case sel && stripe:
-		return lg.BgSelectStripe
+		return lg.bgSelectStripe
 	case sel && hover:
-		return lg.BgHoverSelect
+		return lg.bgHoverSelect
 	case sel:
-		return lg.BgSelect
+		return lg.bgSelect
 	case stripe && hover:
-		return lg.BgHoverStripe
+		return lg.bgHoverStripe
 	case stripe:
-		return lg.BgStripe
+		return lg.bgStripe
 	case hover:
-		return lg.BgHover
+		return lg.bgHover
 	default:
 		return lg.Styles.ActualBackground
 	}
@@ -1996,30 +1904,30 @@ func (lg *ListGrid) RowBackground(sel, stripe, hover bool) image.Image {
 
 func (lg *ListGrid) ChildBackground(child Widget) image.Image {
 	bg := lg.Styles.ActualBackground
-	_, sv := lg.List()
+	_, sv := lg.list()
 	if sv == nil {
 		return bg
 	}
-	lg.UpdateBackgrounds()
-	row, _ := sv.WidgetIndex(child)
+	lg.updateBackgrounds()
+	row, _ := sv.widgetIndex(child)
 	si := row + sv.StartIndex
-	return lg.RowBackground(sv.IndexIsSelected(si), si%2 == 1, row == sv.hoverRow)
+	return lg.rowBackground(sv.indexIsSelected(si), si%2 == 1, row == sv.hoverRow)
 }
 
-func (lg *ListGrid) RenderStripes() {
+func (lg *ListGrid) renderStripes() {
 	pos := lg.Geom.Pos.Content
 	sz := lg.Geom.Size.Actual.Content
-	if lg.VisRows == 0 || sz.Y == 0 {
+	if lg.visibleRows == 0 || sz.Y == 0 {
 		return
 	}
-	lg.UpdateBackgrounds()
+	lg.updateBackgrounds()
 
 	pc := &lg.Scene.PaintContext
-	rows := lg.Layout.Shape.Y
-	cols := lg.Layout.Shape.X
+	rows := lg.layout.Shape.Y
+	cols := lg.layout.Shape.X
 	st := pos
 	offset := 0
-	_, sv := lg.List()
+	_, sv := lg.list()
 	startIndex := 0
 	if sv != nil {
 		startIndex = sv.StartIndex
@@ -2027,7 +1935,7 @@ func (lg *ListGrid) RenderStripes() {
 	}
 	for r := 0; r < rows; r++ {
 		si := r + startIndex
-		ht, _ := lg.Layout.RowHeight(r, 0)
+		ht, _ := lg.layout.rowHeight(r, 0)
 		miny := st.Y
 		for c := 0; c < cols; c++ {
 			ki := r*cols + c
@@ -2043,18 +1951,18 @@ func (lg *ListGrid) RenderStripes() {
 		ssz := sz
 		ssz.Y = ht
 		stripe := (r+offset)%2 == 1
-		sbg := lg.RowBackground(sv.IndexIsSelected(si), stripe, r == sv.hoverRow)
+		sbg := lg.rowBackground(sv.indexIsSelected(si), stripe, r == sv.hoverRow)
 		pc.BlitBox(st, ssz, sbg)
-		st.Y += ht + lg.Layout.Gap.Y
+		st.Y += ht + lg.layout.Gap.Y
 	}
 }
 
-// MousePosInGrid returns true if the event mouse position is
+// mousePosInGrid returns true if the event mouse position is
 // located within the slicegrid.
-func (lg *ListGrid) MousePosInGrid(pt image.Point) bool {
+func (lg *ListGrid) mousePosInGrid(pt image.Point) bool {
 	ptrel := lg.PointToRelPos(pt)
 	sz := lg.Geom.ContentBBox.Size()
-	if lg.VisRows == 0 || sz.Y == 0 {
+	if lg.visibleRows == 0 || sz.Y == 0 {
 		return false
 	}
 	if ptrel.Y < 0 || ptrel.Y >= sz.Y || ptrel.X < 0 || ptrel.X >= sz.X-50 { // leave margin on rhs around scroll
@@ -2063,22 +1971,22 @@ func (lg *ListGrid) MousePosInGrid(pt image.Point) bool {
 	return true
 }
 
-// IndexFromPixel returns the row, column indexes of given pixel point within grid.
+// indexFromPixel returns the row, column indexes of given pixel point within grid.
 // Takes a scene-level position.
-func (lg *ListGrid) IndexFromPixel(pt image.Point) (row, col int, isValid bool) {
-	if !lg.MousePosInGrid(pt) {
+func (lg *ListGrid) indexFromPixel(pt image.Point) (row, col int, isValid bool) {
+	if !lg.mousePosInGrid(pt) {
 		return
 	}
-	ptf := math32.Vector2FromPoint(lg.PointToRelPos(pt))
-	sz := math32.Vector2FromPoint(lg.Geom.ContentBBox.Size())
+	ptf := math32.FromPoint(lg.PointToRelPos(pt))
+	sz := math32.FromPoint(lg.Geom.ContentBBox.Size())
 	isValid = true
-	rows := lg.Layout.Shape.Y
-	cols := lg.Layout.Shape.X
+	rows := lg.layout.Shape.Y
+	cols := lg.layout.Shape.X
 	st := math32.Vector2{}
 	got := false
 	for r := 0; r < rows; r++ {
-		ht, _ := lg.Layout.RowHeight(r, 0)
-		ht += lg.Layout.Gap.Y
+		ht, _ := lg.layout.rowHeight(r, 0)
+		ht += lg.layout.Gap.Y
 		miny := st.Y
 		if r > 0 {
 			for c := 0; c < cols; c++ {
@@ -2108,5 +2016,5 @@ func (lg *ListGrid) IndexFromPixel(pt image.Point) (row, col int, isValid bool) 
 
 func (lg *ListGrid) Render() {
 	lg.WidgetBase.Render()
-	lg.RenderStripes()
+	lg.renderStripes()
 }

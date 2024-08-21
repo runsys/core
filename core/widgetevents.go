@@ -39,29 +39,29 @@ func (wb *WidgetBase) Clipboard() system.Clipboard {
 	return wb.Events().Clipboard()
 }
 
-// On adds the given event handler to the [WidgetBase.Listeners.Normal] for the given event type.
-// Listeners are called in sequential descending order, so this listener will be called
-// before all of the ones added before it. On is one of the main ways for both end-user
-// and internal code to add an event handler to a widget, in addition to OnFirst and
-// OnFinal, which add event handlers that are called before and after those added
-// by this function, respectively.
+// On adds the given event handler to the [WidgetBase.Listeners.Normal] for the given
+// event type. Listeners are called in sequential descending order, so this listener
+// will be called before all of the ones added before it. On is one of the main ways
+// to add an event handler to a widget, in addition to OnFirst and OnFinal, which add
+// event handlers that are called before and after those added by this function,
+// respectively.
 func (wb *WidgetBase) On(etype events.Types, fun func(e events.Event)) {
 	wb.Listeners.Normal.Add(etype, fun)
 }
 
-// OnFirst adds the given event handler to the [WidgetBase.Listeners.First] for the given event type.
-// FirstListeners are called in sequential descending order, so this first listener will be called
-// before all of the ones added before it. OnFirst is one of the main ways for both end-user
-// and internal code to add an event handler to a widget, in addition to On and OnFinal,
+// OnFirst adds the given event handler to the [WidgetBase.Listeners.First] for the given
+// event type. FirstListeners are called in sequential descending order, so this first
+// listener will be called before all of the ones added before it. OnFirst is one of the
+// main ways to add an event handler to a widget, in addition to On and OnFinal,
 // which add event handlers that are called after those added by this function.
 func (wb *WidgetBase) OnFirst(etype events.Types, fun func(e events.Event)) {
 	wb.Listeners.First.Add(etype, fun)
 }
 
-// OnFinal adds the given event handler to the [WidgetBase.Listeners.Final] for the given event type.
-// FinalListeners are called in sequential descending order, so this final listener will be called
-// before all of the ones added before it. OnFinal is one of the main ways for both end-user
-// and internal code to add an event handler to a widget, in addition to OnFirst and On,
+// OnFinal adds the given event handler to the [WidgetBase.Listeners.Final] for the given
+// event type. FinalListeners are called in sequential descending order, so this final
+// listener will be called before all of the ones added before it. OnFinal is one of the
+// main ways to add an event handler to a widget, in addition to OnFirst and On,
 // which add event handlers that are called before those added by this function.
 func (wb *WidgetBase) OnFinal(etype events.Types, fun func(e events.Event)) {
 	wb.Listeners.Final.Add(etype, fun)
@@ -123,8 +123,9 @@ func (wb *WidgetBase) OnClose(fun func(e events.Event)) {
 // associated with this widget when they try to close it. It calls the given config
 // function to configure the dialog. It is the responsibility of this config function
 // to add the title and close button to the dialog, which is necessary so that the close
-// dialog can be fully customized. If this function returns false, it does not make the dialog.
-// This can be used to make the dialog conditional on other things, like whether something is saved.
+// dialog can be fully customized. If this function returns false, it does not make the
+// dialog. This can be used to make the dialog conditional on other things, like whether
+// something is saved.
 func (wb *WidgetBase) AddCloseDialog(config func(d *Body) bool) {
 	var inClose, canClose bool
 	wb.OnClose(func(e events.Event) {
@@ -142,8 +143,8 @@ func (wb *WidgetBase) AddCloseDialog(config func(d *Body) bool) {
 				inClose = false
 				canClose = false
 			})
-			parent.AsWidget().OnWidgetAdded(func(w Widget) { // TODO(config)
-				if bt := AsButton(w); bt != nil {
+			parent.AsWidget().SetOnChildAdded(func(n tree.Node) {
+				if bt := AsButton(n); bt != nil {
 					bt.OnFirst(events.Click, func(e events.Event) {
 						// any button click gives us permission to close
 						canClose = true
@@ -159,10 +160,10 @@ func (wb *WidgetBase) AddCloseDialog(config func(d *Body) bool) {
 	})
 }
 
-// Send sends an NEW event of given type to this widget,
+// Send sends an new event of the given type to this widget,
 // optionally starting from values in the given original event
 // (recommended to include where possible).
-// Do NOT send an existing event using this method if you
+// Do not send an existing event using this method if you
 // want the Handled state to persist throughout the call chain;
 // call HandleEvent directly for any existing events.
 func (wb *WidgetBase) Send(typ events.Types, original ...events.Event) {
@@ -179,31 +180,40 @@ func (wb *WidgetBase) Send(typ events.Types, original ...events.Event) {
 	wb.HandleEvent(e)
 }
 
-// SendChange sends the [events.Change] event, which is widely used to signal
-// updating for most widgets. It takes the event that the new change event
+// SendChange sends a new [events.Change] event, which is widely used to signal
+// value changing for most widgets. It takes the event that the new change event
 // is derived from, if any.
 func (wb *WidgetBase) SendChange(original ...events.Event) {
 	wb.Send(events.Change, original...)
 }
 
-func (wb *WidgetBase) SendKey(kf keymap.Functions, original ...events.Event) {
+// UpdateChange is a helper function that calls [WidgetBase.SendChange]
+// and then [WidgetBase.Update]. That is the correct order, since
+// calling [WidgetBase.Update] first would cause the value of the widget
+// to be incorrectly overridden in a [Value] context.
+func (wb *WidgetBase) UpdateChange(original ...events.Event) {
+	wb.SendChange(original...)
+	wb.Update()
+}
+
+func (wb *WidgetBase) sendKey(kf keymap.Functions, original ...events.Event) {
 	if wb.This == nil {
 		return
 	}
 	kc := kf.Chord()
-	wb.SendKeyChord(kc, original...)
+	wb.sendKeyChord(kc, original...)
 }
 
-func (wb *WidgetBase) SendKeyChord(kc key.Chord, original ...events.Event) {
+func (wb *WidgetBase) sendKeyChord(kc key.Chord, original ...events.Event) {
 	r, code, mods, err := kc.Decode()
 	if err != nil {
 		fmt.Println("SendKeyChord: Decode error:", err)
 		return
 	}
-	wb.SendKeyChordRune(r, code, mods, original...)
+	wb.sendKeyChordRune(r, code, mods, original...)
 }
 
-func (wb *WidgetBase) SendKeyChordRune(r rune, code key.Codes, mods key.Modifiers, original ...events.Event) {
+func (wb *WidgetBase) sendKeyChordRune(r rune, code key.Codes, mods key.Modifiers, original ...events.Event) {
 	ke := events.NewKey(events.KeyChord, r, code, mods)
 	if len(original) > 0 && original[0] != nil {
 		kb := *original[0].AsBase()
@@ -216,10 +226,8 @@ func (wb *WidgetBase) SendKeyChordRune(r rune, code key.Codes, mods key.Modifier
 	wb.HandleEvent(ke)
 }
 
-// HandleEvent sends the given event to all Listeners for that event type.
-// It also checks if the State has changed and calls ApplyStyle if so.
-// If more significant Config level changes are needed due to an event,
-// the event handler must do this itself.
+// HandleEvent sends the given event to all [WidgetBase.Listeners] for that event type.
+// It also checks if the State has changed and calls [WidgetBase.Restyle] if so.
 func (wb *WidgetBase) HandleEvent(e events.Event) {
 	if DebugSettings.EventTrace {
 		if e.Type() != events.MouseMove {
@@ -243,9 +251,9 @@ func (wb *WidgetBase) HandleEvent(e events.Event) {
 	}
 }
 
-// FirstHandleEvent sends the given event to the FirstListeners for that event type.
+// firstHandleEvent sends the given event to the Listeners.First for that event type.
 // Does NOT do any state updating.
-func (wb *WidgetBase) FirstHandleEvent(e events.Event) {
+func (wb *WidgetBase) firstHandleEvent(e events.Event) {
 	if DebugSettings.EventTrace {
 		if e.Type() != events.MouseMove {
 			fmt.Println(e, "first to", wb)
@@ -256,9 +264,9 @@ func (wb *WidgetBase) FirstHandleEvent(e events.Event) {
 	})
 }
 
-// FinalHandleEvent sends the given event to the FinalListeners for that event type.
+// finalHandleEvent sends the given event to the Listeners.Final for that event type.
 // Does NOT do any state updating.
-func (wb *WidgetBase) FinalHandleEvent(e events.Event) {
+func (wb *WidgetBase) finalHandleEvent(e events.Event) {
 	if DebugSettings.EventTrace {
 		if e.Type() != events.MouseMove {
 			fmt.Println(e, "final to", wb)
@@ -269,17 +277,17 @@ func (wb *WidgetBase) FinalHandleEvent(e events.Event) {
 	})
 }
 
-// PosInScBBox returns true if given position is within
+// posInScBBox returns true if given position is within
 // this node's scene bbox
-func (wb *WidgetBase) PosInScBBox(pos image.Point) bool {
+func (wb *WidgetBase) posInScBBox(pos image.Point) bool {
 	return pos.In(wb.Geom.TotalBBox)
 }
 
-// HandleWidgetClick handles the Click event for basic Widget behavior.
+// handleWidgetClick handles the Click event for basic Widget behavior.
 // For Left button:
 // If Checkable, toggles Checked. if Focusable, Focuses or clears,
 // If Selectable, updates state and sends Select, Deselect.
-func (wb *WidgetBase) HandleWidgetClick() {
+func (wb *WidgetBase) handleWidgetClick() {
 	wb.OnClick(func(e events.Event) {
 		if wb.AbilityIs(abilities.Checkable) {
 			wb.SetState(!wb.StateIs(states.Checked), states.Checked)
@@ -287,37 +295,23 @@ func (wb *WidgetBase) HandleWidgetClick() {
 		if wb.AbilityIs(abilities.Focusable) {
 			wb.SetFocus()
 		} else {
-			wb.FocusClear()
+			wb.focusClear()
 		}
-		// note: ReadOnly items are automatically selectable, for choosers
+		// note: read only widgets are automatically selectable
 		if wb.AbilityIs(abilities.Selectable) || wb.IsReadOnly() {
 			wb.Send(events.Select, e)
 		}
 	})
 }
 
-// HandleSelectToggle does basic selection handling logic on widget,
-// as just a toggle on individual selection state, including ensuring
-// consistent selection flagging for parts.
-// This is not called by WidgetBase but should be called for simple
-// Widget types.  More complex container / View widgets likely implement
-// their own more complex selection logic.
-func (wb *WidgetBase) HandleSelectToggle() {
-	wb.OnSelect(func(e events.Event) {
-		if wb.AbilityIs(abilities.Selectable) {
-			wb.SetState(!wb.StateIs(states.Selected), states.Selected)
-		}
-	})
-}
-
-// HandleWidgetStateFromMouse updates all standard
+// handleWidgetStateFromMouse updates all standard
 // State flags based on mouse events,
 // such as MouseDown / Up -> Active and MouseEnter / Leave -> Hovered.
 // None of these "consume" the event by setting Handled flag, as they are
 // designed to work in conjunction with more specific handlers.
 // Note that Disabled and Invisible widgets do NOT receive
 // these events so it is not necessary to check that.
-func (wb *WidgetBase) HandleWidgetStateFromMouse() {
+func (wb *WidgetBase) handleWidgetStateFromMouse() {
 	wb.On(events.MouseDown, func(e events.Event) {
 		if wb.AbilityIs(abilities.Activatable) {
 			wb.SetState(true, states.Active)
@@ -380,10 +374,10 @@ func (wb *WidgetBase) HandleWidgetStateFromMouse() {
 	})
 }
 
-// HandleLongHoverTooltip listens for LongHover and LongPress events and
+// handleLongHoverTooltip listens for LongHover and LongPress events and
 // pops up and deletes tooltips based on those. Most widgets should call
 // this as part of their event handler methods.
-func (wb *WidgetBase) HandleLongHoverTooltip() {
+func (wb *WidgetBase) handleLongHoverTooltip() {
 	wb.On(events.LongHoverStart, func(e events.Event) {
 		wi := wb.This.(Widget)
 		tt, pos := wi.WidgetTooltip(e.Pos())
@@ -391,11 +385,11 @@ func (wb *WidgetBase) HandleLongHoverTooltip() {
 			return
 		}
 		e.SetHandled()
-		NewTooltip(wi, tt, pos).Run()
+		newTooltip(wi, tt, pos).Run()
 	})
 	wb.On(events.LongHoverEnd, func(e events.Event) {
 		if wb.Scene.Stage != nil {
-			wb.Scene.Stage.Popups.PopDeleteType(TooltipStage)
+			wb.Scene.Stage.popups.popDeleteType(TooltipStage)
 		}
 	})
 
@@ -407,22 +401,22 @@ func (wb *WidgetBase) HandleLongHoverTooltip() {
 			return
 		}
 		e.SetHandled()
-		NewTooltip(wi, tt, pos).Run()
+		newTooltip(wi, tt, pos).Run()
 	})
 	wb.On(events.LongPressEnd, func(e events.Event) {
 		if wb.Scene.Stage != nil {
-			wb.Scene.Stage.Popups.PopDeleteType(TooltipStage)
+			wb.Scene.Stage.popups.popDeleteType(TooltipStage)
 		}
 	})
 }
 
-// HandleWidgetStateFromFocus updates standard State flags based on Focus events
-func (wb *WidgetBase) HandleWidgetStateFromFocus() {
+// handleWidgetStateFromFocus updates standard State flags based on Focus events
+func (wb *WidgetBase) handleWidgetStateFromFocus() {
 	wb.OnFocus(func(e events.Event) {
 		if wb.AbilityIs(abilities.Focusable) {
 			wb.ScrollToThis()
 			wb.SetState(true, states.Focused)
-			if wb.Styles.VirtualKeyboard != styles.KeyboardNone {
+			if !wb.IsReadOnly() && wb.Styles.VirtualKeyboard != styles.KeyboardNone {
 				TheApp.ShowVirtualKeyboard(wb.Styles.VirtualKeyboard)
 			}
 		}
@@ -430,23 +424,23 @@ func (wb *WidgetBase) HandleWidgetStateFromFocus() {
 	wb.OnFocusLost(func(e events.Event) {
 		if wb.AbilityIs(abilities.Focusable) {
 			wb.SetState(false, states.Focused)
-			if wb.Styles.VirtualKeyboard != styles.KeyboardNone {
+			if !wb.IsReadOnly() && wb.Styles.VirtualKeyboard != styles.KeyboardNone {
 				TheApp.HideVirtualKeyboard()
 			}
 		}
 	})
 }
 
-// HandleWidgetMagnifyEvent calls [RenderWindow.StepZoom] on [events.Magnify]
-func (wb *WidgetBase) HandleWidgetMagnify() {
+// HandleWidgetMagnifyEvent calls [renderWindow.stepZoom] on [events.Magnify]
+func (wb *WidgetBase) handleWidgetMagnify() {
 	wb.On(events.Magnify, func(e events.Event) {
 		ev := e.(*events.TouchMagnify)
-		wb.Events().RenderWindow().StepZoom(ev.ScaleFactor - 1)
+		wb.Events().RenderWindow().stepZoom(ev.ScaleFactor - 1)
 	})
 }
 
-// HandleValueOnChange adds a handler that calls [WidgetBase.ValueOnChange].
-func (wb *WidgetBase) HandleValueOnChange() {
+// handleValueOnChange adds a handler that calls [WidgetBase.ValueOnChange].
+func (wb *WidgetBase) handleValueOnChange() {
 	// need to go before end-user OnChange handlers
 	wb.OnFirst(events.Change, func(e events.Event) {
 		if wb.ValueOnChange != nil {
@@ -455,9 +449,9 @@ func (wb *WidgetBase) HandleValueOnChange() {
 	})
 }
 
-// HandleClickOnEnterSpace adds key event handler for Enter or Space
-// to generate a Click action.  This is not added by default,
-// but is added in Button and Switch Widgets for example.
+// HandleClickOnEnterSpace adds a key event handler for Enter and Space
+// keys to generate an [events.Click] event. This is not added by default,
+// but is added in [Button] and [Switch] for example.
 func (wb *WidgetBase) HandleClickOnEnterSpace() {
 	wb.OnKeyChord(func(e events.Event) {
 		kf := keymap.Of(e.KeyChord())
@@ -477,13 +471,14 @@ func (wb *WidgetBase) HandleClickOnEnterSpace() {
 //		Focus
 
 // SetFocus sets the keyboard input focus on this item or the first item within it
-// that can be focused (if none, then goes ahead and sets focus to this object).
-// This does NOT send an [events.Focus] event, which typically results in
-// the widget being styled as focused.  See [SetFocusEvent] for one that does.
+// that can be focused (if none, then just sets focus to this object).
+// This does not send an [events.Focus] event, which typically results in
+// the widget being styled as focused. See [WidgetBase.SetFocusEvent] for
+// a version that does.
 func (wb *WidgetBase) SetFocus() {
 	foc := wb.This.(Widget)
 	if !wb.AbilityIs(abilities.Focusable) {
-		foc = wb.FocusableInMe()
+		foc = wb.focusableInThis()
 		if foc == nil {
 			foc = wb.This.(Widget)
 		}
@@ -491,18 +486,19 @@ func (wb *WidgetBase) SetFocus() {
 	em := wb.Events()
 	if em != nil {
 		// fmt.Println("grab focus:", foc)
-		em.SetFocus(foc) // doesn't send event
+		em.setFocus(foc) // doesn't send event
 	}
 }
 
 // SetFocusEvent sets the keyboard input focus on this item or the first item within it
-// that can be focused (if none, then goes ahead and sets focus to this object).
+// that can be focused (if none, then just sets focus to this object).
 // This sends an [events.Focus] event, which typically results in
-// the widget being styled as focused.  See [SetFocus] for one that does not.
+// the widget being styled as focused. See [WidgetBase.SetFocus] for
+// a version that does not.
 func (wb *WidgetBase) SetFocusEvent() {
 	foc := wb.This.(Widget)
 	if !wb.AbilityIs(abilities.Focusable) {
-		foc = wb.FocusableInMe()
+		foc = wb.focusableInThis()
 		if foc == nil {
 			foc = wb.This.(Widget)
 		}
@@ -510,48 +506,48 @@ func (wb *WidgetBase) SetFocusEvent() {
 	em := wb.Events()
 	if em != nil {
 		// fmt.Println("grab focus:", foc)
-		em.SetFocusEvent(foc) // doesn't send event
+		em.setFocusEvent(foc) // doesn't send event
 	}
 }
 
-// FocusableInMe returns the first Focusable element within this widget
-func (wb *WidgetBase) FocusableInMe() Widget {
+// focusableInThis returns the first Focusable element within this widget
+func (wb *WidgetBase) focusableInThis() Widget {
 	var foc Widget
-	wb.WidgetWalkDown(func(wi Widget, wb *WidgetBase) bool {
-		if !wb.AbilityIs(abilities.Focusable) {
+	wb.WidgetWalkDown(func(cw Widget, cwb *WidgetBase) bool {
+		if !cwb.AbilityIs(abilities.Focusable) {
 			return tree.Continue
 		}
-		foc = wi
+		foc = cw
 		return tree.Break // done
 	})
 	return foc
 }
 
-// FocusNext moves the focus onto the next item
-func (wb *WidgetBase) FocusNext() {
+// focusNext moves the focus onto the next item
+func (wb *WidgetBase) focusNext() {
 	em := wb.Events()
 	if em != nil {
-		em.FocusNext()
+		em.focusNext()
 	}
 }
 
-// FocusPrev moves the focus onto the previous item
-func (wb *WidgetBase) FocusPrev() {
+// focusPrev moves the focus onto the previous item
+func (wb *WidgetBase) focusPrev() {
 	em := wb.Events()
 	if em != nil {
-		em.FocusPrev()
+		em.focusPrev()
 	}
 }
 
-// FocusClear resets focus to nil, but keeps the previous focus to pick up next time..
-func (wb *WidgetBase) FocusClear() {
+// focusClear resets focus to nil, but keeps the previous focus to pick up next time..
+func (wb *WidgetBase) focusClear() {
 	em := wb.Events()
 	if em != nil {
-		em.FocusClear()
+		em.focusClear()
 	}
 }
 
-// StartFocus specifies this widget to give focus to when the window opens
+// StartFocus specifies that this widget should get focus when the [Scene] is shown.
 func (wb *WidgetBase) StartFocus() {
 	em := wb.Events()
 	if em != nil {
@@ -559,14 +555,13 @@ func (wb *WidgetBase) StartFocus() {
 	}
 }
 
-// ContainsFocus returns true if this widget contains the current focus widget
-// as maintained in the RenderWin
+// ContainsFocus returns whether this widget contains the current focus widget.
 func (wb *WidgetBase) ContainsFocus() bool {
 	em := wb.Events()
 	if em == nil {
 		return false
 	}
-	cur := em.Focus
+	cur := em.focus
 	if cur == nil {
 		return false
 	}

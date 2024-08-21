@@ -177,7 +177,7 @@ func TestTransform(t *testing.T) {
 	compareTol(t, gb.boxTransform.X0, btcorrect.X0)
 	compareTol(t, gb.boxTransform.Y0, btcorrect.Y0)
 
-	// szf := math32.Vector2FromPoint(r.Size())
+	// szf := math32.FromPoint(r.Size())
 	// w := float64(szf.X)
 	// h := float64(szf.Y)
 	// oriX := float64(r.Min.X)
@@ -232,7 +232,7 @@ func TestHCT(t *testing.T) {
 	idx := 0
 	for pct := float32(0); pct <= 1.01; pct += 0.1 {
 		// lc := lin.GetColor(pct)
-		hc := hct.GetColor(pct)
+		hc := hct.getColor(pct)
 		oc := orig[idx]
 		if oc != hc {
 			t.Errorf("original: %#v != %#v\n", oc, hc)

@@ -1,13 +1,11 @@
-# Updating
-
 Cogent Core provides several ways to dynamically update the content of an app.
 
 The simplest way to update a widget is to call [[core.WidgetBase.Update]] after changing any of its properties:
 
 ```Go
 count := 0
-text := core.NewText(parent).SetText("0")
-core.NewButton(parent).SetText("Increment").OnClick(func(e events.Event) {
+text := core.NewText(b).SetText("0")
+core.NewButton(b).SetText("Increment").OnClick(func(e events.Event) {
     count++
     text.SetText(strconv.Itoa(count)).Update()
 })
@@ -17,11 +15,11 @@ You can also register a [[core.WidgetBase.Updater]] that will get called when th
 
 ```Go
 count := 0
-text := core.NewText(parent)
+text := core.NewText(b)
 text.Updater(func() {
     text.SetText(strconv.Itoa(count))
 })
-core.NewButton(parent).SetText("Increment").OnClick(func(e events.Event) {
+core.NewButton(b).SetText("Increment").OnClick(func(e events.Event) {
     count++
     text.Update()
 })

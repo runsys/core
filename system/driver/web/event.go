@@ -35,7 +35,8 @@ func (a *App) AddEventListeners() {
 	AddEventListener(g, "keydown", a.OnKeyDown)
 	AddEventListener(g, "keyup", a.OnKeyUp)
 	AddEventListener(g, "beforeinput", a.OnBeforeInput)
-	AddEventListener(g, "resize", a.OnResize)
+	AddEventListener(g.Get("visualViewport"), "resize", a.OnResize)
+	AddEventListener(g, "blur", a.OnBlur)
 }
 
 func AddEventListener(v js.Value, nm string, fn func(this js.Value, args []js.Value) any, opts ...map[string]any) {
@@ -146,7 +147,7 @@ func (a *App) OnTouchMove(this js.Value, args []js.Value) any {
 func (a *App) OnWheel(this js.Value, args []js.Value) any {
 	e := args[0]
 	delta := a.EventPosFor(e.Get("deltaX"), e.Get("deltaY"))
-	a.Event.Scroll(a.EventPos(e), math32.Vector2FromPoint(delta).DivScalar(8))
+	a.Event.Scroll(a.EventPos(e), math32.FromPoint(delta).DivScalar(8))
 	e.Call("preventDefault")
 	return nil
 }
@@ -262,5 +263,10 @@ func (a *App) OnBeforeInput(this js.Value, args []js.Value) any {
 
 func (a *App) OnResize(this js.Value, args []js.Value) any {
 	a.Resize()
+	return nil
+}
+
+func (a *App) OnBlur(this js.Value, args []js.Value) any {
+	a.KeyMods = 0
 	return nil
 }

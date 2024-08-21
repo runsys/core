@@ -53,8 +53,11 @@ func MimeFromFile(fname string) (mtype, ext string, err error) {
 		return mtyp, ext, nil
 	}
 	_, fn := filepath.Split(fname)
-	fc := fn[0]
-	lc := fn[len(fn)-1]
+	var fc, lc byte
+	if len(fn) > 0 {
+		fc = fn[0]
+		lc = fn[len(fn)-1]
+	}
 	if fc == '~' || fc == '%' || fc == '#' || lc == '~' || lc == '%' || lc == '#' {
 		return MimeString(Trash), ext, nil
 	}
@@ -136,7 +139,7 @@ type MimeType struct {
 	Cat Categories
 
 	// if known, the name of the known file type, else NoSupporUnknown
-	Sup Known
+	Known Known
 }
 
 // CustomMimes can be set by other apps to contain custom mime types that
@@ -155,7 +158,7 @@ func MimeKnown(mime string) Known {
 	if !has {
 		return Unknown
 	}
-	return mt.Sup
+	return mt.Known
 }
 
 // ExtKnown returns the known type for given file extension,
@@ -169,7 +172,7 @@ func ExtKnown(ext string) Known {
 	if !has {
 		return Unknown
 	}
-	return mt.Sup
+	return mt.Known
 }
 
 // KnownFromFile returns the known type for given file,
@@ -180,6 +183,16 @@ func KnownFromFile(fname string) Known {
 		return Unknown
 	}
 	return MimeKnown(mtyp)
+}
+
+// MimeFromKnown returns MimeType info for given known file type.
+func MimeFromKnown(ftyp Known) MimeType {
+	for _, mt := range AvailableMimes {
+		if mt.Known == ftyp {
+			return mt
+		}
+	}
+	return MimeType{}
 }
 
 // MergeAvailableMimes merges the StdMimes and CustomMimes into AvailMimes
@@ -210,20 +223,20 @@ func MergeAvailableMimes() {
 					ExtMimeMap[ex] = mt.Mime
 				}
 			}
-			if mt.Sup != Unknown {
-				if hsp, has := KnownMimes[mt.Sup]; has {
-					fmt.Printf("fileinfo.MergeAvailMimes: more-than-one mimetype has extensions for same known file type: %v -- one: %v other %v\n", mt.Sup, hsp.Mime, mt.Mime)
+			if mt.Known != Unknown {
+				if hsp, has := KnownMimes[mt.Known]; has {
+					fmt.Printf("fileinfo.MergeAvailMimes: more-than-one mimetype has extensions for same known file type: %v -- one: %v other %v\n", mt.Known, hsp.Mime, mt.Mime)
 				} else {
-					KnownMimes[mt.Sup] = mt
+					KnownMimes[mt.Known] = mt
 				}
 			}
 		}
 	}
 	// second pass to get any known guys that don't have exts
 	for _, mt := range AvailableMimes {
-		if mt.Sup != Unknown {
-			if _, has := KnownMimes[mt.Sup]; !has {
-				KnownMimes[mt.Sup] = mt
+		if mt.Known != Unknown {
+			if _, has := KnownMimes[mt.Known]; !has {
+				KnownMimes[mt.Known] = mt
 			}
 		}
 	}
@@ -447,6 +460,9 @@ var StandardMimes = []MimeType{
 	{"text/x-ini-file", nil, Data, Ini},
 	{"text/uri-list", nil, Data, Uri},
 	{"application/x-color", nil, Data, Color},
+	{"text/toml", []string{".toml"}, Data, Toml},
+	{"application/toml", nil, Data, Toml},
+	{"application/yaml", []string{".yaml"}, Data, Yaml},
 
 	{"application/rdf+xml", []string{".rdf"}, Data, Unknown},
 	{"application/msaccess", []string{".mdb"}, Data, Unknown},
@@ -522,6 +538,7 @@ var StandardMimes = []MimeType{
 	{"model/x3d+xml", []string{".x3dv", ".x3d", ".x3db"}, Model, X3d},
 	{"model/x3d+vrml", nil, Model, X3d},
 	{"model/x3d+binary", nil, Model, X3d},
+	{"application/object", []string{".obj", ".mtl"}, Model, Obj},
 
 	// Audio
 	{"audio/aac", []string{".aac"}, Audio, Aac},

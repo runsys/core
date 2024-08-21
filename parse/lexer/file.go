@@ -25,7 +25,7 @@ type File struct {
 	Filename string
 
 	// the known file type, if known (typically only known files are processed)
-	Sup fileinfo.Known
+	Known fileinfo.Known
 
 	// base path for reporting file names -- this must be set externally e.g., by gide for the project root path
 	BasePath string
@@ -48,12 +48,12 @@ type File struct {
 
 // SetSrc sets the source to given content, and alloc Lexs -- if basepath is empty
 // then it is set to the path for the filename
-func (fl *File) SetSrc(src [][]rune, fname, basepath string, sup fileinfo.Known) {
+func (fl *File) SetSrc(src [][]rune, fname, basepath string, known fileinfo.Known) {
 	fl.Filename = fname
 	if basepath != "" {
 		fl.BasePath = basepath
 	}
-	fl.Sup = sup
+	fl.Known = known
 	fl.Lines = src
 	fl.AllocLines()
 }
@@ -75,37 +75,20 @@ func (fl *File) AllocLines() {
 // the markup with ongoing edits
 func (fl *File) LinesInserted(stln, nlns int) {
 	// Lexs
-	tmplx := make([]Line, nlns)
-	nlx := append(fl.Lexs, tmplx...)
-	copy(nlx[stln+nlns:], nlx[stln:])
-	copy(nlx[stln:], tmplx)
-	fl.Lexs = nlx
-
-	// Comments
-	tmpcm := make([]Line, nlns)
-	ncm := append(fl.Comments, tmpcm...)
-	copy(ncm[stln+nlns:], ncm[stln:])
-	copy(ncm[stln:], tmpcm)
-	fl.Comments = ncm
-
-	// LastStacks
-	tmpls := make([]Stack, nlns)
-	nls := append(fl.LastStacks, tmpls...)
-	copy(nls[stln+nlns:], nls[stln:])
-	copy(nls[stln:], tmpls)
-	fl.LastStacks = nls
-
-	// EosPos
-	tmpep := make([]EosPos, nlns)
-	nep := append(fl.EosPos, tmpep...)
-	copy(nep[stln+nlns:], nep[stln:])
-	copy(nep[stln:], tmpep)
-	fl.EosPos = nep
+	n := len(fl.Lexs)
+	if stln > n {
+		stln = n
+	}
+	fl.Lexs = slices.Insert(fl.Lexs, stln, make([]Line, nlns)...)
+	fl.Comments = slices.Insert(fl.Comments, stln, make([]Line, nlns)...)
+	fl.LastStacks = slices.Insert(fl.LastStacks, stln, make([]Stack, nlns)...)
+	fl.EosPos = slices.Insert(fl.EosPos, stln, make([]EosPos, nlns)...)
 }
 
 // LinesDeleted deletes lines -- called e.g., by core.TextBuf to sync
 // the markup with ongoing edits
 func (fl *File) LinesDeleted(stln, edln int) {
+	edln = min(edln, len(fl.Lexs))
 	fl.Lexs = append(fl.Lexs[:stln], fl.Lexs[edln:]...)
 	fl.Comments = append(fl.Comments[:stln], fl.Comments[edln:]...)
 	fl.LastStacks = append(fl.LastStacks[:stln], fl.LastStacks[edln:]...)
@@ -158,8 +141,8 @@ func (fl *File) OpenFile(fname string) error {
 		return err
 	}
 	rns := RunesFromBytes(alltxt)
-	sup := fileinfo.KnownFromFile(fname)
-	fl.SetSrc(rns, fname, "", sup)
+	known := fileinfo.KnownFromFile(fname)
+	fl.SetSrc(rns, fname, "", known)
 	return nil
 }
 
@@ -190,7 +173,7 @@ func (fl *File) InitFromLine(sfl *File, ln int) bool {
 		return false
 	}
 	src := [][]rune{sfl.Lines[ln], {}} // need extra blank
-	fl.SetSrc(src, sfl.Filename, sfl.BasePath, sfl.Sup)
+	fl.SetSrc(src, sfl.Filename, sfl.BasePath, sfl.Known)
 	fl.Lexs = []Line{sfl.Lexs[ln], {}}
 	fl.Comments = []Line{sfl.Comments[ln], {}}
 	fl.EosPos = []EosPos{sfl.EosPos[ln], {}}
@@ -198,7 +181,7 @@ func (fl *File) InitFromLine(sfl *File, ln int) bool {
 }
 
 // InitFromString initializes from given string. Returns false if string is empty
-func (fl *File) InitFromString(str string, fname string, sup fileinfo.Known) bool {
+func (fl *File) InitFromString(str string, fname string, known fileinfo.Known) bool {
 	if str == "" {
 		return false
 	}
@@ -206,7 +189,7 @@ func (fl *File) InitFromString(str string, fname string, sup fileinfo.Known) boo
 	if len(src) == 1 { // need more than 1 line
 		src = append(src, []rune{})
 	}
-	fl.SetSrc(src, fname, "", sup)
+	fl.SetSrc(src, fname, "", known)
 	return true
 }
 
@@ -244,7 +227,8 @@ func (fl *File) SetLine(ln int, lexs, comments Line, stack Stack) {
 	fl.EosPos[ln] = nil
 }
 
-// LexLine returns the lexing output for given line, combining comments and all other tokens
+// LexLine returns the lexing output for given line,
+// combining comments and all other tokens
 // and allocating new memory using clone
 func (fl *File) LexLine(ln int) Line {
 	if len(fl.Lexs) <= ln {

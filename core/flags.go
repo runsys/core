@@ -31,16 +31,6 @@ func (wb *WidgetBase) SetState(on bool, state ...states.States) *WidgetBase {
 	return wb
 }
 
-// SetAbilities sets the given [abilities.Abilities] flags to the given value.
-func (wb *WidgetBase) SetAbilities(on bool, able ...abilities.Abilities) *WidgetBase {
-	bfs := make([]enums.BitFlag, len(able))
-	for i, st := range able {
-		bfs[i] = st
-	}
-	wb.Styles.Abilities.SetFlag(on, bfs...)
-	return wb
-}
-
 // SetSelected sets the [states.Selected] flag to given value for the entire Widget
 // and calls [WidgetBase.Restyle] to apply any resultant style changes.
 func (wb *WidgetBase) SetSelected(sel bool) *WidgetBase {
@@ -65,11 +55,9 @@ func (wb *WidgetBase) IsDisabled() bool {
 	return wb.StateIs(states.Disabled)
 }
 
-// IsReadOnly returns whether this node is flagged as [ReadOnly] or [Disabled].
-// If so, behave appropriately. Styling is based on each state separately,
-// but behaviors are often the same for both of these states.
+// IsReadOnly returns whether this widget is flagged as either [states.ReadOnly] or [states.Disabled].
 func (wb *WidgetBase) IsReadOnly() bool {
-	return wb.StateIs(states.ReadOnly) || wb.StateIs(states.Disabled)
+	return wb.Styles.IsReadOnly()
 }
 
 // SetReadOnly sets the [states.ReadOnly] flag to the given value.
@@ -77,12 +65,12 @@ func (wb *WidgetBase) SetReadOnly(ro bool) *WidgetBase {
 	return wb.SetState(ro, states.ReadOnly)
 }
 
-// HasStateWithin returns whether the current node or any
+// HasStateWithin returns whether this widget or any
 // of its children have the given state flag.
 func (wb *WidgetBase) HasStateWithin(state states.States) bool {
 	got := false
-	wb.WidgetWalkDown(func(wi Widget, wb *WidgetBase) bool {
-		if wb.StateIs(state) {
+	wb.WidgetWalkDown(func(cw Widget, cwb *WidgetBase) bool {
+		if cwb.StateIs(state) {
 			got = true
 			return tree.Break
 		}

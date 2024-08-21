@@ -2,9 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package web provides functions for building Cogent Core apps for the web.
 package web
-
-//go:generate go run gen/scripts.go
 
 import (
 	"crypto/sha1"
@@ -18,15 +17,16 @@ import (
 
 	"cogentcore.org/core/base/exec"
 	"cogentcore.org/core/base/iox/imagex"
+	"cogentcore.org/core/base/iox/jsonx"
 	"cogentcore.org/core/cmd/core/config"
 	"cogentcore.org/core/cmd/core/rendericon"
-	"cogentcore.org/core/pages/wpath"
+	"cogentcore.org/core/pages/ppath"
 	strip "github.com/grokify/html-strip-tags-go"
 )
 
 // Build builds an app for web using the given configuration information.
 func Build(c *config.Config) error {
-	output := filepath.Join("bin", "web", "app.wasm")
+	output := filepath.Join(c.Build.Output, "app.wasm")
 	opath := output
 	if c.Web.Gzip {
 		opath += ".orig"
@@ -49,12 +49,12 @@ func Build(c *config.Config) error {
 			return err
 		}
 	}
-	return MakeFiles(c)
+	return makeFiles(c)
 }
 
-// MakeFiles makes the necessary static web files based on the given configuration information.
-func MakeFiles(c *config.Config) error {
-	odir := filepath.Join("bin", "web")
+// makeFiles makes the necessary static web files based on the given configuration information.
+func makeFiles(c *config.Config) error {
+	odir := c.Build.Output
 
 	if c.Web.RandomVersion {
 		t := time.Now().UTC().String()
@@ -65,13 +65,13 @@ func MakeFiles(c *config.Config) error {
 	// It is trusted, so we do not need a more advanced sanitizer.
 	c.About = strip.StripTags(c.About)
 
-	wej := []byte(WASMExecJS())
+	wej := []byte(wasmExecJS)
 	err := os.WriteFile(filepath.Join(odir, "wasm_exec.js"), wej, 0666)
 	if err != nil {
 		return err
 	}
 
-	ajs, err := MakeAppJS(c)
+	ajs, err := makeAppJS(c)
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func MakeFiles(c *config.Config) error {
 		return err
 	}
 
-	awjs, err := MakeAppWorkerJS(c)
+	awjs, err := makeAppWorkerJS(c)
 	if err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ func MakeFiles(c *config.Config) error {
 		return err
 	}
 
-	man, err := MakeManifestJSON(c)
+	man, err := makeManifestJSON(c)
 	if err != nil {
 		return err
 	}
@@ -98,13 +98,36 @@ func MakeFiles(c *config.Config) error {
 		return err
 	}
 
-	acs := []byte(AppCSS)
+	acs := []byte(appCSS)
 	err = os.WriteFile(filepath.Join(odir, "app.css"), acs, 0666)
 	if err != nil {
 		return err
 	}
 
-	iht, err := MakeIndexHTML(c, "", "")
+	preRenderHTML := ""
+	if c.Web.GenerateHTML {
+		preRenderHTML, err = exec.Output("go", "run", "-tags", "offscreen,generatehtml", ".")
+		if err != nil {
+			return err
+		}
+	}
+	preRenderHTMLIndex := preRenderHTML
+	preRenderDescriptionIndex := ""
+	pagesPreRenderData := &ppath.PreRenderData{}
+	if strings.HasPrefix(preRenderHTML, "{") {
+		err := jsonx.Read(pagesPreRenderData, strings.NewReader(preRenderHTML))
+		if err != nil {
+			return err
+		}
+		preRenderHTMLIndex = pagesPreRenderData.HTML[""]
+		if c.About == "" {
+			preRenderDescriptionIndex = pagesPreRenderData.Description[""]
+		}
+		if c.Pages == "" {
+			c.Pages = "content"
+		}
+	}
+	iht, err := makeIndexHTML(c, "", "", preRenderDescriptionIndex, preRenderHTMLIndex)
 	if err != nil {
 		return err
 	}
@@ -114,7 +137,7 @@ func MakeFiles(c *config.Config) error {
 	}
 
 	if c.Pages != "" {
-		err := MakePages(c)
+		err := makePages(c, pagesPreRenderData)
 		if err != nil {
 			return err
 		}
@@ -143,9 +166,9 @@ func MakeFiles(c *config.Config) error {
 	return nil
 }
 
-// MakePages makes a directory structure of pages for
+// makePages makes a directory structure of pages for
 // the core pages located at [config.Config.Pages].
-func MakePages(c *config.Config) error {
+func makePages(c *config.Config, preRenderData *ppath.PreRenderData) error {
 	return filepath.WalkDir(c.Pages, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -161,25 +184,24 @@ func MakePages(c *config.Config) error {
 		path = strings.TrimSuffix(path, ".md")
 		path = strings.TrimPrefix(path, c.Pages)
 		path = strings.TrimPrefix(path, "/")
-		path = wpath.Format(path)
+		path = strings.TrimSuffix(path, "/")
+		if ppath.Draft(path) {
+			return nil
+		}
+		path = ppath.Format(path)
 		if path == "" { // exclude root index
 			return nil
 		}
-		opath := filepath.Join("bin", "web", path)
+		opath := filepath.Join(c.Build.Output, path)
 		err = os.MkdirAll(opath, 0777)
 		if err != nil {
 			return err
 		}
-		numNested := strings.Count(path, "/") + 1
-		basePath := ""
-		for range numNested {
-			basePath += "../"
-		}
-		title := wpath.Label(path, c.Name)
+		title := ppath.Label(path, c.Name)
 		if title != c.Name {
 			title += " • " + c.Name
 		}
-		b, err := MakeIndexHTML(c, basePath, title)
+		b, err := makeIndexHTML(c, ppath.BasePath(path), title, preRenderData.Description[path], preRenderData.HTML[path])
 		if err != nil {
 			return err
 		}

@@ -14,6 +14,7 @@ import (
 	"cogentcore.org/core/base/tiered"
 	"cogentcore.org/core/colors"
 	"cogentcore.org/core/cursors"
+	"cogentcore.org/core/enums"
 	"cogentcore.org/core/events"
 	"cogentcore.org/core/styles"
 	"cogentcore.org/core/styles/abilities"
@@ -21,9 +22,10 @@ import (
 	"cogentcore.org/core/styles/units"
 	"cogentcore.org/core/system"
 	"cogentcore.org/core/tree"
+	"golang.org/x/image/draw"
 )
 
-// Widget is the interface that all Cogent Core satisfy.
+// Widget is the interface that all Cogent Core widgets satisfy.
 // The core widget functionality is defined on [WidgetBase],
 // and all higher-level widget types must embed it. This
 // interface only contains the methods that higher-level
@@ -37,8 +39,11 @@ type Widget interface {
 	// core widget functionality is implemented on [WidgetBase].
 	AsWidget() *WidgetBase
 
-	// See [WidgetBase.Style].
-	Style() // TODO(config): remove
+	// Style updates the style properties of the widget based on [WidgetBase.Stylers].
+	// To specify the style properties of a widget, use [WidgetBase.Styler].
+	// Widgets can implement this method if necessary to add additional styling behavior,
+	// such as calling [units.Value.ToDots] on a custom [units.Value] field.
+	Style()
 
 	// SizeUp (bottom-up) gathers Actual sizes from our Children & Parts,
 	// based on Styles.Min / Max sizes and actual content sizing
@@ -72,11 +77,11 @@ type Widget interface {
 	// Alloc size per Styles settings and widget-specific behavior.
 	Position()
 
-	// ScenePos computes scene-based absolute positions and final BBox
+	// ApplyScenePos computes scene-based absolute positions and final BBox
 	// bounding boxes for rendering, based on relative positions from
 	// Position step and parents accumulated position and scroll offset.
 	// This is the only step needed when scrolling (very fast).
-	ScenePos()
+	ApplyScenePos()
 
 	// Render is the method that widgets should implement to define their
 	// custom rendering steps. It should not typically be called outside of
@@ -118,31 +123,19 @@ type Widget interface {
 	// ContextMenuPos.
 	ShowContextMenu(e events.Event)
 
-	// IsVisible returns true if a node is visible for rendering according
-	// to the [states.Invisible] flag on it or any of its parents.
-	// This flag is also set by [styles.DisplayNone] during [ApplyStyle].
-	// This does *not* check for an empty TotalBBox, indicating that the widget
-	// is out of render range -- that is done by [PushBounds] prior to rendering.
-	// Non-visible nodes are automatically not rendered and do not get
-	// window events.
-	// This call recursively calls the parent, which is typically a short path.
-	IsVisible() bool
-
 	// ChildBackground returns the background color (Image) for given child Widget.
-	// By default, this is just our [Styles.Actualbackground] but it can be computed
-	// specifically for the child (e.g., for zebra stripes in [ListGrid])
+	// By default, this is just our [styles.Style.ActualBackground] but it can be computed
+	// specifically for the child (e.g., for zebra stripes in [ListGrid]).
 	ChildBackground(child Widget) image.Image
 
-	// DirectRenderImage uploads image directly into given system.Drawer at given index
-	// Typically this is a drw.SetGoImage call with an [image.RGBA], or
-	// drw.SetFrameImage with a [vgpu.FrameBuffer]
-	DirectRenderImage(drw system.Drawer, idx int)
-
-	// DirectRenderDraw draws the current image at index onto the RenderWindow window,
-	// typically using drw.Copy, drw.Scale, or drw.Fill.
-	// flipY is the default setting for whether the Y axis needs to be flipped during drawing,
-	// which is typically passed along to the Copy or Scale methods.
-	DirectRenderDraw(drw system.Drawer, idx int, flipY bool)
+	// RenderDraw draws the current image onto the RenderWindow window,
+	// using the [system.Drawer] interface methods, typically [Drawer.Copy].
+	// The given draw operation is suggested by the RenderWindow, with the
+	// first main window using draw.Src and the rest using draw.Over.
+	// Individual draw methods are free to ignore if necessary.
+	// Optimized direct rendering widgets can register by doing
+	// [Scene.AddDirectRender] to directly draw into the window texture.
+	RenderDraw(drw system.Drawer, op draw.Op)
 }
 
 // WidgetBase implements the [Widget] interface and provides the core functionality
@@ -158,23 +151,22 @@ type WidgetBase struct {
 
 	// Parts are a separate tree of sub-widgets that can be used to store
 	// orthogonal parts of a widget when necessary to separate them from children.
-	// For example, trees use parts to separate their internal parts from
+	// For example, [Tree]s use parts to separate their internal parts from
 	// the other child tree nodes. Composite widgets like buttons should
 	// NOT use parts to store their components; parts should only be used when
-	// absolutely necessary.
+	// absolutely necessary. Use [WidgetBase.newParts] to make the parts.
 	Parts *Frame `copier:"-" json:"-" xml:"-" set:"-"`
 
-	// Geom has the full layout geometry for size and position of this Widget
-	Geom GeomState `edit:"-" copier:"-" json:"-" xml:"-" set:"-"`
+	// Geom has the full layout geometry for size and position of this widget.
+	Geom geomState `edit:"-" copier:"-" json:"-" xml:"-" set:"-"`
 
-	// If true, override the computed styles and allow directly editing Styles.
+	// OverrideStyle, if true, indicates override the computed styles of the widget
+	// and allow directly editing [WidgetBase.Styles]. It is typically only set in
+	// the inspector.
 	OverrideStyle bool `copier:"-" json:"-" xml:"-" set:"-"`
 
-	// Styles are styling settings for this widget.
-	// These are set in SetApplyStyle which should be called after any Config
-	// change (e.g., as done by the Update method).  See Stylers for functions
-	// that set all of the styles, ordered from initial base defaults to later
-	// added overrides.
+	// Styles are styling settings for this widget. They are set by
+	// [WidgetBase.Stylers] in [WidgetBase.Style].
 	Styles styles.Style `json:"-" xml:"-" set:"-"`
 
 	// Stylers is a tiered set of functions that are called in sequential
@@ -190,13 +182,6 @@ type WidgetBase struct {
 	// and [WidgetBase.OnFinal] functions, or any of the various On{EventType} helper functions.
 	Listeners tiered.Tiered[events.Listeners] `copier:"-" json:"-" xml:"-" set:"-" edit:"-" display:"add-fields"`
 
-	// A slice of functions to call on all widgets that are added as children
-	// to this widget or its children. These functions are called in sequential
-	// ascending order, so the last added one is called last and thus can
-	// override anything set by the other ones. These should be set using
-	// OnWidgetAdded, which can be called by both end-user and internal code.
-	OnWidgetAdders []func(w Widget) `copier:"-" json:"-" xml:"-" set:"-" edit:"-"`
-
 	// ContextMenus is a slice of menu functions to call to construct
 	// the widget's context menu on an [events.ContextMenu]. The
 	// functions are called in reverse order such that the elements
@@ -211,29 +196,53 @@ type WidgetBase struct {
 
 	// ValueUpdate is a function set by [Bind] that is called in
 	// [WidgetBase.UpdateWidget] to update the widget's value from the bound value.
+	// It should not be accessed by end users.
 	ValueUpdate func() `copier:"-" json:"-" xml:"-" set:"-"`
 
 	// ValueOnChange is a function set by [Bind] that is called when
 	// the widget receives an [events.Change] event to update the bound value
-	// from the widget's value.
+	// from the widget's value. It should not be accessed by end users.
 	ValueOnChange func() `copier:"-" json:"-" xml:"-" set:"-"`
 
 	// ValueTitle is the title to display for a dialog for this [Value].
 	ValueTitle string
 
-	// ValueNewWindow indicates that the dialog of a [Value] should be opened
+	/// flags are atomic bit flags for [WidgetBase] state.
+	flags widgetFlags
+}
+
+// widgetFlags are atomic bit flags for [WidgetBase] state.
+// They must be atomic to prevent race conditions.
+type widgetFlags int64 //enums:bitflag -trim-prefix widget
+
+const (
+	// widgetValueNewWindow indicates that the dialog of a [Value] should be opened
 	// as a new window, instead of a typical full window in the same current window.
-	// This is set by [InitValueButton] and handled by [OpenValueDialog].
+	// This is set by [InitValueButton] and handled by [openValueDialog].
 	// This is triggered by holding down the Shift key while clicking on a
 	// [Value] button. Certain values such as [FileButton] may set this to true
 	// in their [InitValueButton] function.
-	ValueNewWindow bool `copier:"-" json:"-" xml:"-"`
+	widgetValueNewWindow widgetFlags = iota
 
-	// needsRender is whether the widget needs to be rendered on the next render iteration.
-	needsRender bool
+	// widgetNeedsRender is whether the widget needs to be rendered on the next render iteration.
+	widgetNeedsRender
+
+	// widgetFirstRender indicates that we were the first to render, and pushed our parent's
+	// bounds, which then need to be popped.
+	widgetFirstRender
+)
+
+// hasFlag returns whether the given flag is set.
+func (wb *WidgetBase) hasFlag(f widgetFlags) bool {
+	return wb.flags.HasFlag(f)
 }
 
-// Init should be called by every Widget type in its custom
+// setFlag sets the given flags to the given value.
+func (wb *WidgetBase) setFlag(on bool, f ...enums.BitFlag) {
+	wb.flags.SetFlag(on, f...)
+}
+
+// Init should be called by every [Widget] type in its custom
 // Init if it has one to establish all the default styling
 // and event handling that applies to all widgets.
 func (wb *WidgetBase) Init() {
@@ -271,13 +280,13 @@ func (wb *WidgetBase) Init() {
 	})
 
 	// TODO(kai): maybe move all of these event handling functions into one function
-	wb.HandleWidgetClick()
-	wb.HandleWidgetStateFromMouse()
-	wb.HandleLongHoverTooltip()
-	wb.HandleWidgetStateFromFocus()
-	wb.HandleWidgetContextMenu()
-	wb.HandleWidgetMagnify()
-	wb.HandleValueOnChange()
+	wb.handleWidgetClick()
+	wb.handleWidgetStateFromMouse()
+	wb.handleLongHoverTooltip()
+	wb.handleWidgetStateFromFocus()
+	wb.handleWidgetContextMenu()
+	wb.handleWidgetMagnify()
+	wb.handleValueOnChange()
 
 	wb.Updater(wb.UpdateFromMake)
 }
@@ -287,48 +296,34 @@ func (wb *WidgetBase) Init() {
 // It should be called by all other OnAdd functions defined
 // by widget types.
 func (wb *WidgetBase) OnAdd() {
-	if pwb := wb.ParentWidget(); pwb != nil {
+	if pwb := wb.parentWidget(); pwb != nil {
 		wb.Scene = pwb.Scene
 	}
 	if wb.Parts != nil {
 		// the Scene of the Parts may not have been set yet if they were made in Init
 		wb.Parts.Scene = wb.Scene
 	}
+	if wb.Scene != nil && wb.Scene.WidgetInit != nil {
+		wb.Scene.WidgetInit(wb.This.(Widget))
+	}
 }
 
-// SetScene sets the Scene pointer for this widget and all of its children.
-// This can be necessary when creating widgets outside the usual "NewWidget" paradigm,
+// setScene sets the Scene pointer for this widget and all of its children.
+// This can be necessary when creating widgets outside the usual New* paradigm,
 // e.g., when reading from a JSON file.
-func (wb *WidgetBase) SetScene(sc *Scene) {
-	wb.WidgetWalkDown(func(kwi Widget, kwb *WidgetBase) bool {
-		kwb.Scene = sc
+func (wb *WidgetBase) setScene(sc *Scene) {
+	wb.WidgetWalkDown(func(cw Widget, cwb *WidgetBase) bool {
+		cwb.Scene = sc
 		return tree.Continue
 	})
 }
 
-func (wb *WidgetBase) OnChildAdded(child tree.Node) {
-	w, _ := AsWidget(child)
-	if w == nil {
-		return
-	}
-	for _, f := range wb.OnWidgetAdders {
-		f(w)
-	}
-}
-
-// OnWidgetAdded adds a function to call when a widget is added
-// as a child to the widget or any of its children.
-func (wb *WidgetBase) OnWidgetAdded(fun func(w Widget)) {
-	wb.OnWidgetAdders = append(wb.OnWidgetAdders, fun)
-}
-
-// AsWidget returns the given [tree.Node]
-// as a [Widget] interface and a [WidgetBase].
-func AsWidget(n tree.Node) (Widget, *WidgetBase) {
+// AsWidget returns the given [tree.Node] as a [WidgetBase] or nil.
+func AsWidget(n tree.Node) *WidgetBase {
 	if w, ok := n.(Widget); ok {
-		return w, w.AsWidget()
+		return w.AsWidget()
 	}
-	return nil, nil
+	return nil
 }
 
 func (wb *WidgetBase) AsWidget() *WidgetBase {
@@ -337,7 +332,7 @@ func (wb *WidgetBase) AsWidget() *WidgetBase {
 
 func (wb *WidgetBase) CopyFieldsFrom(from tree.Node) {
 	wb.NodeBase.CopyFieldsFrom(from)
-	_, frm := AsWidget(from)
+	frm := AsWidget(from)
 
 	n := len(wb.ContextMenus)
 	if len(frm.ContextMenus) > n {
@@ -357,21 +352,21 @@ func (wb *WidgetBase) CopyFieldsFrom(from tree.Node) {
 }
 
 func (wb *WidgetBase) Destroy() {
-	wb.DeleteParts()
+	wb.deleteParts()
 	wb.NodeBase.Destroy()
 }
 
-// DeleteParts deletes the widget's parts (and the children of the parts).
-func (wb *WidgetBase) DeleteParts() {
+// deleteParts deletes the widget's parts (and the children of the parts).
+func (wb *WidgetBase) deleteParts() {
 	if wb.Parts != nil {
 		wb.Parts.Destroy()
 	}
 	wb.Parts = nil
 }
 
-// NewParts makes the [WidgetBase.Parts] if they don't already exist.
+// newParts makes the [WidgetBase.Parts] if they don't already exist.
 // It returns the parts regardless.
-func (wb *WidgetBase) NewParts() *Frame {
+func (wb *WidgetBase) newParts() *Frame {
 	if wb.Parts != nil {
 		return wb.Parts
 	}
@@ -385,42 +380,24 @@ func (wb *WidgetBase) NewParts() *Frame {
 	return wb.Parts
 }
 
-// ParentWidget returns the parent as a [WidgetBase] or nil
+// parentWidget returns the parent as a [WidgetBase] or nil
 // if this is the root and has no parent.
-func (wb *WidgetBase) ParentWidget() *WidgetBase {
+func (wb *WidgetBase) parentWidget() *WidgetBase {
 	if wb.Parent == nil {
 		return nil
 	}
-	return wb.Parent.(Widget).AsWidget()
-}
-
-// ParentWidgetIf returns the nearest widget parent
-// of the widget for which the given function returns true.
-// It returns nil if no such parent is found.
-func (wb *WidgetBase) ParentWidgetIf(fun func(p *WidgetBase) bool) *WidgetBase {
-	cur := wb
-	for {
-		parent := cur.Parent
-		if parent == nil {
-			return nil
-		}
-		pwi, ok := parent.(Widget)
-		if !ok {
-			return nil
-		}
-		pwb := pwi.AsWidget()
-		if fun(pwb) {
-			return pwb
-		}
-		cur = pwb
+	pw, ok := wb.Parent.(Widget)
+	if ok {
+		return pw.AsWidget()
 	}
+	return nil // the parent may be a non-widget in [tree.UnmarshalRootJSON]
 }
 
-// IsVisible returns true if a node is visible for rendering according
+// IsVisible returns true if a widget is visible for rendering according
 // to the [states.Invisible] flag on it or any of its parents.
-// This flag is also set by [styles.DisplayNone] during [ApplyStyle].
+// This flag is also set by [styles.DisplayNone] during [WidgetBase.Style].
 // This does *not* check for an empty TotalBBox, indicating that the widget
-// is out of render range -- that is done by [PushBounds] prior to rendering.
+// is out of render range; that is done by [WidgetBase.PushBounds] prior to rendering.
 // Non-visible nodes are automatically not rendered and do not get
 // window events.
 // This call recursively calls the parent, which is typically a short path.
@@ -431,19 +408,17 @@ func (wb *WidgetBase) IsVisible() bool {
 	if wb.Parent == nil {
 		return true
 	}
-	return wb.Parent.(Widget).IsVisible()
+	return wb.parentWidget().IsVisible()
 }
 
-// DirectRenderImage uploads image directly into given system.Drawer at given index
-// Typically this is a drw.SetGoImage call with an [image.RGBA], or
-// drw.SetFrameImage with a [vgpu.FrameBuffer]
-func (wb *WidgetBase) DirectRenderImage(drw system.Drawer, idx int) {}
-
-// DirectRenderDraw draws the current image at index onto the RenderWindow window,
-// typically using drw.Copy, drw.Scale, or drw.Fill.
-// flipY is the default setting for whether the Y axis needs to be flipped during drawing,
-// which is typically passed along to the Copy or Scale methods.
-func (wb *WidgetBase) DirectRenderDraw(drw system.Drawer, idx int, flipY bool) {}
+// RenderDraw draws the current image onto the RenderWindow window,
+// using the [system.Drawer] interface methods, typically [Drawer.Copy].
+// The given draw operation is suggested by the RenderWindow, with the
+// first main window using draw.Src and the rest using draw.Over.
+// Individual draw methods are free to ignore if necessary.
+// Optimized direct rendering widgets can register by doing
+// [Scene.AddDirectRender] to directly draw into the window texture.
+func (wb *WidgetBase) RenderDraw(drw system.Drawer, op draw.Op) {}
 
 // NodeWalkDown extends [tree.Node.WalkDown] to [WidgetBase.Parts],
 // which is key for getting full tree traversal to work when updating,
@@ -455,25 +430,24 @@ func (wb *WidgetBase) NodeWalkDown(fun func(tree.Node) bool) {
 	wb.Parts.WalkDown(fun)
 }
 
-// WidgetKidsIter iterates through the Kids, as widgets, calling the given function.
+// ForWidgetChildren iterates through the children as widgets, calling the given function.
 // Return [tree.Continue] (true) to continue, and [tree.Break] (false) to terminate.
-func (wb *WidgetBase) WidgetKidsIter(fun func(i int, w Widget, cwb *WidgetBase) bool) {
-	for i, k := range wb.Children {
-		w, cwb := AsWidget(k)
-		cont := fun(i, w, cwb)
-		if !cont {
+func (wb *WidgetBase) ForWidgetChildren(fun func(i int, cw Widget, cwb *WidgetBase) bool) {
+	for i, c := range wb.Children {
+		w, cwb := c.(Widget), AsWidget(c)
+		if !fun(i, w, cwb) {
 			break
 		}
 	}
 }
 
-// VisibleKidsIter iterates through the Kids, as widgets, calling the given function,
+// forVisibleChildren iterates through the children,as widgets, calling the given function,
 // excluding any with the *local* states.Invisible flag set (does not check parents).
 // This is used e.g., for layout functions to exclude non-visible direct children.
 // Return [tree.Continue] (true) to continue, and [tree.Break] (false) to terminate.
-func (wb *WidgetBase) VisibleKidsIter(fun func(i int, w Widget, cwb *WidgetBase) bool) {
+func (wb *WidgetBase) forVisibleChildren(fun func(i int, cw Widget, cwb *WidgetBase) bool) {
 	for i, k := range wb.Children {
-		w, cwb := AsWidget(k)
+		w, cwb := k.(Widget), AsWidget(k)
 		if cwb.StateIs(states.Invisible) {
 			continue
 		}
@@ -484,36 +458,35 @@ func (wb *WidgetBase) VisibleKidsIter(fun func(i int, w Widget, cwb *WidgetBase)
 	}
 }
 
-// WidgetWalkDown is a version of [tree.Node.WalkDown] that automatically filters
-// nil or deleted items and operates on [Widget] types.
+// WidgetWalkDown is a version of [tree.NodeBase.WalkDown] that operates on [Widget] types.
 // Return [tree.Continue] to continue and [tree.Break] to terminate.
-func (wb *WidgetBase) WidgetWalkDown(fun func(kwi Widget, kwb *WidgetBase) bool) {
-	wb.WalkDown(func(k tree.Node) bool {
-		kwi, kwb := AsWidget(k)
-		return fun(kwi, kwb)
+func (wb *WidgetBase) WidgetWalkDown(fun func(cw Widget, cwb *WidgetBase) bool) {
+	wb.WalkDown(func(n tree.Node) bool {
+		cw, cwb := n.(Widget), AsWidget(n)
+		return fun(cw, cwb)
 	})
 }
 
-// WidgetNext returns the next widget in the tree,
+// widgetNext returns the next widget in the tree,
 // including Parts, which are considered to come after Children.
 // returns nil if no more.
-func WidgetNext(w Widget) Widget {
+func widgetNext(w Widget) Widget {
 	wb := w.AsWidget()
 	if !wb.HasChildren() && wb.Parts == nil {
-		return WidgetNextSibling(w)
+		return widgetNextSibling(w)
 	}
 	if wb.HasChildren() {
 		return wb.Child(0).(Widget)
 	}
 	if wb.Parts != nil {
-		return WidgetNext(wb.Parts.This.(Widget))
+		return widgetNext(wb.Parts.This.(Widget))
 	}
 	return nil
 }
 
-// WidgetNextSibling returns next sibling or nil if none,
+// widgetNextSibling returns next sibling or nil if none,
 // including Parts, which are considered to come after Children.
-func WidgetNextSibling(w Widget) Widget {
+func widgetNextSibling(w Widget) Widget {
 	wb := w.AsWidget()
 	if wb.Parent == nil {
 		return nil
@@ -523,13 +496,13 @@ func WidgetNextSibling(w Widget) Widget {
 	if myidx >= 0 && myidx < wb.Parent.AsTree().NumChildren()-1 {
 		return parent.AsTree().Child(myidx + 1).(Widget)
 	}
-	return WidgetNextSibling(parent)
+	return widgetNextSibling(parent)
 }
 
-// WidgetPrev returns the previous widget in the tree,
+// widgetPrev returns the previous widget in the tree,
 // including Parts, which are considered to come after Children.
 // nil if no more.
-func WidgetPrev(w Widget) Widget {
+func widgetPrev(w Widget) Widget {
 	wb := w.AsWidget()
 	if wb.Parent == nil {
 		return nil
@@ -538,42 +511,32 @@ func WidgetPrev(w Widget) Widget {
 	myidx := wb.IndexInParent()
 	if myidx > 0 {
 		nn := parent.AsTree().Child(myidx - 1).(Widget)
-		return WidgetLastChildParts(nn) // go to parts
+		return widgetLastChildParts(nn) // go to parts
 	}
 	// we were children, done
 	return parent
 }
 
-// WidgetLastChildParts returns the last child under given node,
+// widgetLastChildParts returns the last child under given node,
 // or node itself if no children.  Starts with Parts,
-func WidgetLastChildParts(w Widget) Widget {
+func widgetLastChildParts(w Widget) Widget {
 	wb := w.AsWidget()
 	if wb.Parts != nil && wb.Parts.HasChildren() {
-		return WidgetLastChildParts(wb.Parts.Child(wb.Parts.NumChildren() - 1).(Widget))
+		return widgetLastChildParts(wb.Parts.Child(wb.Parts.NumChildren() - 1).(Widget))
 	}
 	if wb.HasChildren() {
-		return WidgetLastChildParts(wb.Child(wb.NumChildren() - 1).(Widget))
+		return widgetLastChildParts(wb.Child(wb.NumChildren() - 1).(Widget))
 	}
 	return w
 }
 
-// WidgetLastChild returns the last child under given node,
-// or node itself if no children. Starts with Children, not Parts
-func WidgetLastChild(w Widget) Widget {
-	wb := w.AsWidget()
-	if wb.HasChildren() {
-		return WidgetLastChildParts(wb.Child(wb.NumChildren() - 1).(Widget))
-	}
-	return w
-}
-
-// WidgetNextFunc returns the next widget in the tree,
+// widgetNextFunc returns the next widget in the tree,
 // including Parts, which are considered to come after children,
 // continuing until the given function returns true.
 // nil if no more.
-func WidgetNextFunc(w Widget, fun func(w Widget) bool) Widget {
+func widgetNextFunc(w Widget, fun func(w Widget) bool) Widget {
 	for {
-		nw := WidgetNext(w)
+		nw := widgetNext(w)
 		if nw == nil {
 			return nil
 		}
@@ -588,13 +551,13 @@ func WidgetNextFunc(w Widget, fun func(w Widget) bool) Widget {
 	}
 }
 
-// WidgetPrevFunc returns the previous widget in the tree,
+// widgetPrevFunc returns the previous widget in the tree,
 // including Parts, which are considered to come after children,
 // continuing until the given function returns true.
 // nil if no more.
-func WidgetPrevFunc(w Widget, fun func(w Widget) bool) Widget {
+func widgetPrevFunc(w Widget, fun func(w Widget) bool) Widget {
 	for {
-		pw := WidgetPrev(w)
+		pw := widgetPrev(w)
 		if pw == nil {
 			return nil
 		}

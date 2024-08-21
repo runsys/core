@@ -9,7 +9,6 @@ import (
 
 	"cogentcore.org/core/base/labels"
 	"cogentcore.org/core/base/reflectx"
-	"cogentcore.org/core/base/strcase"
 	"cogentcore.org/core/events"
 	"cogentcore.org/core/icons"
 	"cogentcore.org/core/paint"
@@ -110,7 +109,7 @@ func (tb *TreeButton) Init() {
 		tb.SetText(path)
 	})
 	InitValueButton(tb, true, func(d *Body) {
-		InspectorView(d, tb.Tree)
+		makeInspector(d, tb.Tree)
 	})
 }
 
@@ -132,17 +131,17 @@ type IconButton struct {
 
 func (ib *IconButton) WidgetValue() any { return &ib.Icon }
 
-func (ib *IconButton) Init() { // TODO(config): display:"show-name"
+func (ib *IconButton) Init() {
 	ib.Button.Init()
 	ib.Updater(func() {
-		if ib.Icon.IsNil() {
+		if !ib.Icon.IsSet() {
 			ib.SetText("Select an icon")
 		} else {
 			ib.SetText("")
 		}
 		if ib.IsReadOnly() {
 			ib.SetType(ButtonText)
-			if ib.Icon.IsNil() {
+			if !ib.Icon.IsSet() {
 				ib.SetText("").SetIcon(icons.Blank)
 			}
 		} else {
@@ -152,14 +151,11 @@ func (ib *IconButton) Init() { // TODO(config): display:"show-name"
 	InitValueButton(ib, false, func(d *Body) {
 		d.SetTitle("Select an icon")
 		si := 0
-		all := icons.All()
-		sv := NewList(d)
-		sv.SetSlice(&all).SetSelectedValue(ib.Icon).BindSelect(&si)
-		sv.SetStyleFunc(func(w Widget, s *styles.Style, row int) {
-			w.(*IconButton).SetText(strcase.ToSentence(string(all[row])))
-		})
-		sv.OnChange(func(e events.Event) {
-			ib.Icon = icons.AllIcons[si]
+		used := maps.Keys(icons.Used)
+		ls := NewList(d)
+		ls.SetSlice(&used).SetSelectedValue(ib.Icon).BindSelect(&si)
+		ls.OnChange(func(e events.Event) {
+			ib.Icon = used[si]
 		})
 	})
 }
@@ -185,7 +181,7 @@ func (fb *FontButton) Init() {
 		fi := paint.FontLibrary.FontInfo
 		tb := NewTable(d)
 		tb.SetSlice(&fi).SetSelectedField("Name").SetSelectedValue(fb.Text).BindSelect(&si)
-		tb.SetStyleFunc(func(w Widget, s *styles.Style, row, col int) {
+		tb.SetTableStyler(func(w Widget, s *styles.Style, row, col int) {
 			if col != 4 {
 				return
 			}
@@ -201,6 +197,6 @@ func (fb *FontButton) Init() {
 	})
 }
 
-// HiStyleName is a highlighting style name.
-// TODO(config): figure out a better location for this.
-type HiStyleName string
+// HighlightingName is a highlighting style name.
+// TODO: move this to texteditor/highlighting.
+type HighlightingName string

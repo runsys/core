@@ -25,9 +25,9 @@ import (
 // in all higher-level tree types.
 //
 // All nodes must be properly initialized by using one of [New], [NodeBase.NewChild],
-// [NodeBase.AddChild], [NodeBase.InsertChild], [NodeBase.InsertNewChild],
-// [NodeBase.Clone], [Update], or [Plan]. This ensures that the [Node.This] field
-// is set correctly and that the [Node.Init] method is called.
+// [NodeBase.AddChild], [NodeBase.InsertChild], [NodeBase.Clone], [Update], or [Plan].
+// This ensures that the [NodeBase.This] field is set correctly and the [Node.Init]
+// method is called.
 //
 // All nodes support JSON marshalling and unmarshalling through the standard [encoding/json]
 // interfaces, so you can use the standard functions for loading and saving trees. However,
@@ -81,6 +81,11 @@ type NodeBase struct {
 	// [NodeBase.FinalMaker] to add one.
 	Makers tiered.Tiered[[]func(p *Plan)] `copier:"-" json:"-" xml:"-" set:"-" edit:"-" display:"add-fields"`
 
+	// OnChildAdded is called when a node is added as a direct child of this node.
+	// When a node is added to a parent, it calls [Node.OnAdd] on itself and then
+	// this function on its parent if it is non-nil.
+	OnChildAdded func(n Node) `copier:"-" json:"-" xml:"-" edit:"-"`
+
 	// numLifetimeChildren is the number of children that have ever been added to this
 	// node, which is used for automatic unique naming.
 	numLifetimeChildren uint64
@@ -118,7 +123,7 @@ func (n *NodeBase) PlanName() string {
 func (n *NodeBase) NodeType() *types.Type {
 	if t := types.TypeByValue(n.This); t != nil {
 		if t.Instance == nil {
-			t.Instance = n.New()
+			t.Instance = n.NewInstance()
 		}
 		return t
 	}
@@ -127,12 +132,12 @@ func (n *NodeBase) NodeType() *types.Type {
 	return types.AddType(&types.Type{
 		Name:     name,
 		IDName:   strcase.ToKebab(name[li+1:]),
-		Instance: n.New(),
+		Instance: n.NewInstance(),
 	})
 }
 
-// New returns a new instance of this node type.
-func (n *NodeBase) New() Node {
+// NewInstance returns a new instance of this node type.
+func (n *NodeBase) NewInstance() Node {
 	return reflect.New(reflect.TypeOf(n.This).Elem()).Interface().(Node)
 }
 
@@ -243,18 +248,16 @@ func (n *NodeBase) Path() string {
 // automatically gets the [NodeBase.This] version of the given parent,
 // so a base type can be passed in without manually accessing [NodeBase.This].
 func (n *NodeBase) PathFrom(parent Node) string {
+	if n.This == parent {
+		return ""
+	}
 	// critical to get `This`
 	parent = parent.AsTree().This
 	// we bail a level below the parent so it isn't in the path
 	if n.Parent == nil || n.Parent == parent {
 		return EscapePathName(n.Name)
 	}
-	ppath := ""
-	if n.Parent == parent {
-		ppath = "/" + EscapePathName(parent.AsTree().Name)
-	} else {
-		ppath = n.Parent.AsTree().PathFrom(parent)
-	}
+	ppath := n.Parent.AsTree().PathFrom(parent)
 	return ppath + "/" + EscapePathName(n.Name)
 
 }
@@ -302,26 +305,18 @@ func findPathChild(n Node, child string) int {
 // AddChild adds given child at end of children list.
 // The kid node is assumed to not be on another tree (see [MoveToParent])
 // and the existing name should be unique among children.
-// Any error is automatically logged in addition to being returned.
-func (n *NodeBase) AddChild(kid Node) error {
-	if err := checkThis(n); err != nil {
-		return err
-	}
-	initNode(kid)
+func (n *NodeBase) AddChild(kid Node) {
+	InitNode(kid)
 	n.Children = append(n.Children, kid)
 	SetParent(kid, n) // key to set new parent before deleting: indicates move instead of delete
-	return nil
 }
 
 // NewChild creates a new child of the given type and adds it at the end
 // of the list of children. The name defaults to the ID (kebab-case) name
 // of the type, plus the [Node.NumLifetimeChildren] of the parent.
 func (n *NodeBase) NewChild(typ *types.Type) Node {
-	if err := checkThis(n); err != nil {
-		return nil
-	}
 	kid := newOfType(typ)
-	initNode(kid)
+	InitNode(kid)
 	n.Children = append(n.Children, kid)
 	SetParent(kid, n)
 	return kid
@@ -330,15 +325,10 @@ func (n *NodeBase) NewChild(typ *types.Type) Node {
 // InsertChild adds given child at position in children list.
 // The kid node is assumed to not be on another tree (see [MoveToParent])
 // and the existing name should be unique among children.
-// Any error is automatically logged in addition to being returned.
-func (n *NodeBase) InsertChild(kid Node, index int) error {
-	if err := checkThis(n); err != nil {
-		return err
-	}
-	initNode(kid)
+func (n *NodeBase) InsertChild(kid Node, index int) {
+	InitNode(kid)
 	n.Children = slices.Insert(n.Children, index, kid)
 	SetParent(kid, n)
-	return nil
 }
 
 // Deleting Children:
@@ -704,8 +694,8 @@ func copyFrom(to, from Node) {
 // Any pointers within the cloned tree will correctly point within the new
 // cloned tree (see [Node.CopyFrom] for more information).
 func (n *NodeBase) Clone() Node {
-	nc := n.New()
-	initNode(nc)
+	nc := n.NewInstance()
+	InitNode(nc)
 	nc.AsTree().SetName(n.Name)
 	nc.AsTree().CopyFrom(n.This)
 	return nc
@@ -737,7 +727,3 @@ func (n *NodeBase) Init() {}
 // OnAdd is a placeholder implementation of
 // [Node.OnAdd] that does nothing.
 func (n *NodeBase) OnAdd() {}
-
-// OnChildAdded is a placeholder implementation of
-// [Node.OnChildAdded] that does nothing.
-func (n *NodeBase) OnChildAdded(child Node) {}

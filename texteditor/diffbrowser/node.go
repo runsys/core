@@ -48,6 +48,19 @@ func (tn *Node) Init() {
 	tn.ContextMenus = nil
 	tn.AddContextMenu(tn.ContextMenu)
 
+	tn.Parts.AsWidget().OnDoubleClick(func(e events.Event) {
+		if tn.HasChildren() {
+			return
+		}
+		br := tn.Browser()
+		if br == nil {
+			return
+		}
+		sels := tn.GetSelectedNodes()
+		if sels != nil {
+			br.ViewDiff(tn)
+		}
+	})
 	tn.Parts.Styler(func(s *styles.Style) {
 		s.Gap.X.Em(0.4)
 	})
@@ -67,18 +80,6 @@ func (tn *Node) Init() {
 	})
 }
 
-func (tn *Node) OnDoubleClick(e events.Event) {
-	e.SetHandled()
-	br := tn.Browser()
-	if br == nil {
-		return
-	}
-	sels := tn.SelectedViews()
-	if sels != nil {
-		br.ViewDiff(tn)
-	}
-}
-
 // Browser returns the parent browser
 func (tn *Node) Browser() *Browser {
 	return tree.ParentByType[*Browser](tn)
@@ -94,7 +95,7 @@ func (tn *Node) ContextMenu(m *core.Scene) {
 		if br == nil {
 			return
 		}
-		sels := tn.SelectedViews()
+		sels := tn.GetSelectedNodes()
 		sn := sels[len(sels)-1].(*Node)
 		br.ViewDiff(sn)
 	})

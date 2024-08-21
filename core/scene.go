@@ -10,6 +10,7 @@ import (
 
 	"cogentcore.org/core/colors"
 	"cogentcore.org/core/cursors"
+	"cogentcore.org/core/enums"
 	"cogentcore.org/core/events"
 	"cogentcore.org/core/math32"
 	"cogentcore.org/core/paint"
@@ -29,6 +30,18 @@ import (
 type Scene struct { //core:no-new
 	Frame
 
+	// Body provides the main contents of scenes that use control Bars
+	// to allow the main window contents to be specified separately
+	// from that dynamic control content.  When constructing scenes using
+	// a [Body], you can operate directly on the [Body], which has wrappers
+	// for most major Scene functions.
+	Body *Body `json:"-" xml:"-" set:"-"`
+
+	// WidgetInit is a function called on every newly created [Widget].
+	// This can be used to set global configuration and styling for all
+	// widgets in conjunction with [App.SceneInit].
+	WidgetInit func(w Widget) `json:"-" xml:"-" edit:"-"`
+
 	// Bars contains functions for constructing the control bars for this Scene,
 	// attached to different sides of a Scene (e.g., TopAppBar at Top,
 	// NavBar at Bottom, etc).  Functions are called in forward order
@@ -41,13 +54,6 @@ type Scene struct { //core:no-new
 
 	// AppBars contains functions for making the plan for the top app bar.
 	AppBars []func(p *tree.Plan) `json:"-" xml:"-"`
-
-	// Body provides the main contents of scenes that use control Bars
-	// to allow the main window contents to be specified separately
-	// from that dynamic control content.  When constructing scenes using
-	// a Body, you can operate directly on the [Body], which has wrappers
-	// for most major Scene functions.
-	Body *Body
 
 	// Data is the optional data value being represented by this scene.
 	// Used e.g., for recycling views of a given item instead of creating new one.
@@ -85,69 +91,86 @@ type Scene struct { //core:no-new
 
 	// lastRender captures key params from last render.
 	// If different then a new ApplyStyleScene is needed.
-	lastRender RenderParams
+	lastRender renderParams
 
 	// showIter counts up at start of showing a Scene
 	// to trigger Show event and other steps at start of first show
 	showIter int
 
-	// directRenders are widgets that render directly to the RenderWin
+	// directRenders are widgets that render directly to the [RenderWindow]
 	// instead of rendering into the Scene Pixels image.
 	directRenders []Widget
 
-	// State bool values:
+	// flags are atomic bit flags for [Scene] state.
+	flags sceneFlags
+}
 
-	// HasShown is whether this scene has been shown.
+// sceneFlags are atomic bit flags for [Scene] state.
+// They must be atomic to prevent race conditions.
+type sceneFlags int64 //enums:bitflag -trim-prefix scene
+
+const (
+	// sceneHasShown is whether this scene has been shown.
 	// This is used to ensure that [events.Show] is only sent once.
-	HasShown bool `copier:"-" json:"-" xml:"-" display:"-" set:"-"`
+	sceneHasShown sceneFlags = iota
 
-	// updating means the Scene is in the process of updating.
+	// sceneUpdating means the Scene is in the process of sceneUpdating.
 	// It is set for any kind of tree-level update.
 	// Skip any further update passes until it goes off.
-	updating bool
+	sceneUpdating
 
 	// sceneNeedsRender is whether anything in the Scene needs to be re-rendered
 	// (but not necessarily the whole scene itself).
-	sceneNeedsRender bool
+	sceneNeedsRender
 
-	// needsLayout is whether the Scene needs a new layout pass.
-	needsLayout bool
+	// sceneNeedsLayout is whether the Scene needs a new layout pass.
+	sceneNeedsLayout
 
-	// imageUpdated indicates that the Scene's image has been updated
+	// sceneImageUpdated indicates that the Scene's image has been updated
 	// e.g., due to a render or a resize. This is reset by the
 	// global [RenderWindow] rendering pass, so it knows whether it needs to
 	// copy the image up to the GPU or not.
-	imageUpdated bool
+	sceneImageUpdated
 
-	// prefSizing means that this scene is currently doing a
+	// scenePrefSizing means that this scene is currently doing a
 	// PrefSize computation to compute the size of the scene
 	// (for sizing window for example); affects layout size computation
 	// only for Over
-	prefSizing bool
+	scenePrefSizing
+)
+
+// hasFlag returns whether the given flag is set.
+func (sc *Scene) hasFlag(f sceneFlags) bool {
+	return sc.flags.HasFlag(f)
 }
 
-// NewBodyScene creates a new Scene for use with an associated Body that
+// setFlag sets the given flags to the given value.
+func (sc *Scene) setFlag(on bool, f ...enums.BitFlag) {
+	sc.flags.SetFlag(on, f...)
+}
+
+// newBodyScene creates a new Scene for use with an associated Body that
 // contains the main content of the Scene (e.g., a Window, Dialog, etc).
 // It will be constructed from the Bars-configured control bars on each
 // side, with the given Body as the central content.
-func NewBodyScene(body *Body) *Scene {
+func newBodyScene(body *Body) *Scene {
 	sc := NewScene(body.Name + " scene")
 	sc.Body = body
-	// need to set parent immediately so that SceneConfig works,
+	// need to set parent immediately so that SceneInit works,
 	// but can not add it yet because it may go elsewhere due
 	// to app bars
 	tree.SetParent(body, sc)
 	return sc
 }
 
-// NewScene creates a new Scene object without a Body, e.g., for use
+// NewScene creates a new [Scene] object without a [Body], e.g., for use
 // in a Menu, Tooltip or other such simple popups or non-control-bar Scenes.
 func NewScene(name ...string) *Scene {
 	sc := tree.New[Scene]()
 	if len(name) > 0 {
 		sc.SetName(name[0])
 	}
-	sc.Events.Scene = sc
+	sc.Events.scene = sc
 	return sc
 }
 
@@ -167,38 +190,38 @@ func (sc *Scene) Init() {
 		if sc.Stage == nil {
 			return
 		}
-		if sc.Stage.Type.IsPopup() || (sc.Stage.Type == DialogStage && !sc.Stage.FullWindow) {
+		if sc.Stage.Type.isPopup() || (sc.Stage.Type == DialogStage && !sc.Stage.FullWindow) {
 			return
 		}
 
 		s.Padding.Set(units.Dp(8))
 	})
 	sc.OnShow(func(e events.Event) {
-		CurrentRenderWindow.SetStageTitle(sc.Stage.Title)
+		currentRenderWindow.SetStageTitle(sc.Stage.Title)
 	})
 	sc.OnClose(func(e events.Event) {
 		sm := sc.Stage.Mains
 		if sm == nil {
 			return
 		}
-		sm.Mu.RLock()
-		defer sm.Mu.RUnlock()
+		sm.mu.RLock()
+		defer sm.mu.RUnlock()
 
-		if sm.Stack.Len() < 2 {
+		if sm.stack.Len() < 2 {
 			return
 		}
 		// the stage that will be visible next
-		st := sm.Stack.ValueByIndex(sm.Stack.Len() - 2)
-		CurrentRenderWindow.SetStageTitle(st.Title)
+		st := sm.stack.ValueByIndex(sm.stack.Len() - 2)
+		currentRenderWindow.SetStageTitle(st.Title)
 	})
-	if TheApp.SceneConfig != nil {
-		TheApp.SceneConfig(sc)
+	if TheApp.SceneInit != nil {
+		TheApp.SceneInit(sc)
 	}
 }
 
-// RenderContext returns the current render context.
+// renderContext returns the current render context.
 // This will be nil prior to actual rendering.
-func (sc *Scene) RenderContext() *RenderContext {
+func (sc *Scene) renderContext() *renderContext {
 	if sc.Stage == nil {
 		return nil
 	}
@@ -206,13 +229,13 @@ func (sc *Scene) RenderContext() *RenderContext {
 	if sm == nil {
 		return nil
 	}
-	return sm.RenderContext
+	return sm.renderContext
 }
 
 // RenderWindow returns the current render window for this scene.
-// In general it is best to go through RenderContext instead of the window.
+// In general it is best to go through [renderContext] instead of the window.
 // This will be nil prior to actual rendering.
-func (sc *Scene) RenderWindow() *RenderWindow {
+func (sc *Scene) RenderWindow() *renderWindow {
 	if sc.Stage == nil {
 		return nil
 	}
@@ -220,25 +243,25 @@ func (sc *Scene) RenderWindow() *RenderWindow {
 	if sm == nil {
 		return nil
 	}
-	return sm.RenderWindow
+	return sm.renderWindow
 }
 
-// FitInWindow fits Scene geometry (pos, size) into given window geom.
+// fitInWindow fits Scene geometry (pos, size) into given window geom.
 // Calls resize for the new size.
-func (sc *Scene) FitInWindow(winGeom math32.Geom2DInt) {
+func (sc *Scene) fitInWindow(winGeom math32.Geom2DInt) {
 	geom := sc.SceneGeom
 	// full offscreen windows ignore any window geometry constraints
 	// because they must be unbounded by any previous window sizes
 	if TheApp.Platform() != system.Offscreen || !sc.Stage.FullWindow {
 		geom = geom.FitInWindow(winGeom)
 	}
-	sc.Resize(geom)
+	sc.resize(geom)
 	sc.SceneGeom.Pos = geom.Pos
 	// fmt.Println("win", winGeom, "geom", geom)
 }
 
-// Resize resizes the scene, creating a new image; updates Geom
-func (sc *Scene) Resize(geom math32.Geom2DInt) {
+// resize resizes the scene, creating a new image; updates Geom
+func (sc *Scene) resize(geom math32.Geom2DInt) {
 	if geom.Size.X <= 0 || geom.Size.Y <= 0 {
 		return
 	}
@@ -255,7 +278,8 @@ func (sc *Scene) Resize(geom math32.Geom2DInt) {
 	sc.PaintContext.Init(geom.Size.X, geom.Size.Y, sc.Pixels)
 	sc.SceneGeom.Size = geom.Size // make sure
 
-	sc.ApplyStyleScene()
+	sc.updateScene()
+	sc.applyStyleScene()
 	// restart the multi-render updating after resize, to get windows to update correctly while
 	// resizing on Windows (OS) and Linux (see https://github.com/cogentcore/core/issues/584), to get
 	// windows on Windows (OS) to update after a window snap (see https://github.com/cogentcore/core/issues/497),
@@ -266,24 +290,17 @@ func (sc *Scene) Resize(geom math32.Geom2DInt) {
 	sc.NeedsLayout()
 }
 
-func (sc *Scene) ScIsVisible() bool {
-	if sc.RenderContext() == nil || sc.Pixels == nil {
-		return false
-	}
-	return sc.RenderContext().Visible
-}
-
-// Close closes the Stage associated with this Scene.
+// Close closes the [Stage] associated with this [Scene].
 // This only works for main stages (windows and dialogs).
-// It returns whether the Stage was successfully closed.
+// It returns whether the [Stage] was successfully closed.
 func (sc *Scene) Close() bool {
 	if sc == nil {
 		return true
 	}
 	e := &events.Base{Typ: events.Close}
 	e.Init()
-	sc.WidgetWalkDown(func(kwi Widget, kwb *WidgetBase) bool {
-		kwi.AsWidget().HandleEvent(e)
+	sc.WidgetWalkDown(func(cw Widget, cwb *WidgetBase) bool {
+		cw.AsWidget().HandleEvent(e)
 		return tree.Continue
 	})
 	// if they set the event as handled, we do not close the scene
@@ -294,32 +311,15 @@ func (sc *Scene) Close() bool {
 	if mm == nil {
 		return false // todo: needed, but not sure why
 	}
-	mm.DeleteStage(sc.Stage)
-	if sc.Stage.NewWindow && !TheApp.Platform().IsMobile() && !mm.RenderWindow.closing && !mm.RenderWindow.stopEventLoop && !TheApp.IsQuitting() {
-		mm.RenderWindow.CloseReq()
+	mm.deleteStage(sc.Stage)
+	if sc.Stage.NewWindow && !TheApp.Platform().IsMobile() && !mm.renderWindow.closing && !mm.renderWindow.stopEventLoop && !TheApp.IsQuitting() {
+		mm.renderWindow.closeReq()
 	}
 	return true
 }
 
-// UpdateTitle updates the title of the Scene's associated [Stage],
-// [RenderWindow], and [Body], if applicable.
-func (sc *Scene) UpdateTitle(title string) {
-	if sc.Scene != nil {
-		sc.Stage.Title = title
-	}
-	if rw := sc.RenderWindow(); rw != nil {
-		rw.SetTitle(title)
-	}
-	if sc.Body != nil {
-		sc.Body.Title = title
-		if tw, ok := sc.Body.ChildByName("title").(*Text); ok {
-			tw.SetText(title)
-		}
-	}
-}
-
-func (sc *Scene) ScenePos() {
-	sc.Frame.ScenePos()
+func (sc *Scene) ApplyScenePos() {
+	sc.Frame.ApplyScenePos()
 	if sc.Parts == nil {
 		return
 	}
@@ -332,16 +332,16 @@ func (sc *Scene) ScenePos() {
 
 	sc.Parts.Geom.Pos.Total.Y = math32.Ceil(0.5 * mv.Geom.Size.Actual.Total.Y)
 	sc.Parts.Geom.Size.Actual = sc.Geom.Size.Actual
-	sc.Parts.SetContentPosFromPos()
-	sc.Parts.SetBBoxesFromAllocs()
-	sc.Parts.ScenePosChildren()
+	sc.Parts.setContentPosFromPos()
+	sc.Parts.setBBoxesFromAllocs()
+	sc.Parts.applyScenePosChildren()
 
 	psz := sc.Parts.Geom.Size.Actual.Content
 
 	mv.Geom.RelPos.X = 0.5*psz.X - 0.5*mv.Geom.Size.Actual.Total.X
 	mv.Geom.RelPos.Y = 0
-	mv.SetPosFromParent()
-	mv.SetBBoxesFromAllocs()
+	mv.setPosFromParent()
+	mv.setBBoxesFromAllocs()
 
 	rszi := sc.Parts.ChildByName("resize", 1)
 	if rszi == nil {
@@ -350,8 +350,8 @@ func (sc *Scene) ScenePos() {
 	rsz := rszi.(Widget).AsWidget()
 	rsz.Geom.RelPos.X = psz.X // - 0.5*rsz.Geom.Size.Actual.Total.X
 	rsz.Geom.RelPos.Y = psz.Y // - 0.5*rsz.Geom.Size.Actual.Total.Y
-	rsz.SetPosFromParent()
-	rsz.SetBBoxesFromAllocs()
+	rsz.setPosFromParent()
+	rsz.setBBoxesFromAllocs()
 }
 
 func (sc *Scene) AddDirectRender(w Widget) {

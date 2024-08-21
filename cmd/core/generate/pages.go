@@ -17,7 +17,7 @@ import (
 	"cogentcore.org/core/base/generate"
 	"cogentcore.org/core/base/ordmap"
 	"cogentcore.org/core/cmd/core/config"
-	"cogentcore.org/core/pages/wpath"
+	"cogentcore.org/core/pages/ppath"
 )
 
 // Pages does any necessary generation for pages.
@@ -25,15 +25,15 @@ func Pages(c *config.Config) error {
 	if c.Pages == "" {
 		return nil
 	}
-	examples, err := GetPagesExamples(c)
+	examples, err := getPagesExamples(c)
 	if err != nil {
 		return err
 	}
-	return WritePagegen(c, examples)
+	return writePagegen(examples)
 }
 
-// GetPagesExamples collects and returns all of the pages examples.
-func GetPagesExamples(c *config.Config) (ordmap.Map[string, []byte], error) {
+// getPagesExamples collects and returns all of the pages examples.
+func getPagesExamples(c *config.Config) (ordmap.Map[string, []byte], error) {
 	var examples ordmap.Map[string, []byte]
 	err := filepath.WalkDir(c.Pages, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -90,7 +90,7 @@ func GetPagesExamples(c *config.Config) (ordmap.Map[string, []byte], error) {
 				rel = strings.ReplaceAll(rel, `\`, "/")
 				rel = strings.TrimSuffix(rel, filepath.Ext(rel))
 				rel = strings.TrimSuffix(rel, "/index")
-				rel = wpath.Format(rel)
+				rel = ppath.Format(rel)
 				id := rel + "-" + strconv.Itoa(numExamples)
 				examples.Add(id, bytes.Join(curExample, []byte{'\n'}))
 				curExample = nil
@@ -107,8 +107,8 @@ func GetPagesExamples(c *config.Config) (ordmap.Map[string, []byte], error) {
 	return examples, err
 }
 
-// WritePagegen constructs the pagegen.go file from the given examples.
-func WritePagegen(c *config.Config, examples ordmap.Map[string, []byte]) error {
+// writePagegen constructs the pagegen.go file from the given examples.
+func writePagegen(examples ordmap.Map[string, []byte]) error {
 	b := &bytes.Buffer{}
 	generate.PrintHeader(b, "main")
 	b.WriteString(`func init() {

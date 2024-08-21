@@ -26,8 +26,8 @@ type KeyedList struct {
 	// Inline is whether to display the map in one line.
 	Inline bool
 
-	// SortValue is whether to sort by values instead of keys.
-	SortValues bool
+	// SortByValues is whether to sort by values instead of keys.
+	SortByValues bool
 
 	// ncols is the number of columns to display if the keyed list is not inline.
 	ncols int
@@ -65,16 +65,16 @@ func (kl *KeyedList) Init() {
 
 		builtinTypes := types.BuiltinTypes()
 
-		keys := reflectx.MapSort(kl.Map, !kl.SortValues, true)
+		keys := reflectx.MapSort(kl.Map, !kl.SortByValues, true)
 		for _, key := range keys {
 			keytxt := reflectx.ToString(key.Interface())
 			keynm := "key-" + keytxt
 			valnm := "value-" + keytxt
 
 			tree.AddNew(p, keynm, func() Value {
-				return ToValue(key.Interface(), "")
+				return toValue(key.Interface(), "")
 			}, func(w Value) {
-				BindMapKey(mapv, key, w)
+				bindMapKey(mapv, key, w)
 				wb := w.AsWidget()
 				wb.SetReadOnly(kl.IsReadOnly())
 				wb.Styler(func(s *styles.Style) {
@@ -82,25 +82,24 @@ func (kl *KeyedList) Init() {
 					s.SetTextWrap(false)
 				})
 				wb.OnChange(func(e events.Event) {
-					kl.SendChange(e)
-					kl.Update()
+					kl.UpdateChange(e)
 				})
 				wb.SetReadOnly(kl.IsReadOnly())
 				wb.OnInput(kl.HandleEvent)
 				if !kl.IsReadOnly() {
 					wb.AddContextMenu(func(m *Scene) {
-						kl.ContextMenu(m, key)
+						kl.contextMenu(m, key)
 					})
 				}
 				wb.Updater(func() {
-					BindMapKey(mapv, key, w)
+					bindMapKey(mapv, key, w)
 					wb.SetReadOnly(kl.IsReadOnly())
 				})
 			})
 			tree.AddNew(p, valnm, func() Value {
 				val := mapv.MapIndex(key).Interface()
-				w := ToValue(val, "")
-				return BindMapValue(mapv, key, w)
+				w := toValue(val, "")
+				return bindMapValue(mapv, key, w)
 			}, func(w Value) {
 				wb := w.AsWidget()
 				wb.SetReadOnly(kl.IsReadOnly())
@@ -112,11 +111,11 @@ func (kl *KeyedList) Init() {
 				})
 				if !kl.IsReadOnly() {
 					wb.AddContextMenu(func(m *Scene) {
-						kl.ContextMenu(m, key)
+						kl.contextMenu(m, key)
 					})
 				}
 				wb.Updater(func() {
-					BindMapValue(mapv, key, w)
+					bindMapValue(mapv, key, w)
 					wb.SetReadOnly(kl.IsReadOnly())
 				})
 			})
@@ -151,7 +150,7 @@ func (kl *KeyedList) Init() {
 					w.SetIcon(icons.Add).SetType(ButtonTonal)
 					w.Tooltip = "Add an element"
 					w.OnClick(func(e events.Event) {
-						kl.MapAdd()
+						kl.AddItem()
 					})
 				})
 			}
@@ -162,8 +161,7 @@ func (kl *KeyedList) Init() {
 					d := NewBody().AddTitle(kl.ValueTitle).AddText(kl.Tooltip)
 					NewKeyedList(d).SetMap(kl.Map).SetValueTitle(kl.ValueTitle)
 					d.OnClose(func(e events.Event) {
-						kl.Update()
-						kl.SendChange()
+						kl.UpdateChange(e)
 					})
 					d.RunFullDialog(kl)
 				})
@@ -172,47 +170,42 @@ func (kl *KeyedList) Init() {
 	})
 }
 
-func (kl *KeyedList) ContextMenu(m *Scene, keyv reflect.Value) {
+func (kl *KeyedList) contextMenu(m *Scene, keyv reflect.Value) {
 	if kl.IsReadOnly() {
 		return
 	}
 	NewButton(m).SetText("Add").SetIcon(icons.Add).OnClick(func(e events.Event) {
-		kl.MapAdd()
+		kl.AddItem()
 	})
 	NewButton(m).SetText("Delete").SetIcon(icons.Delete).OnClick(func(e events.Event) {
-		kl.MapDelete(keyv)
+		kl.DeleteItem(keyv)
 	})
 }
 
-// ToggleSort toggles sorting by values vs. keys
-func (kl *KeyedList) ToggleSort() {
-	kl.SortValues = !kl.SortValues
+// toggleSort toggles sorting by values vs. keys
+func (kl *KeyedList) toggleSort() {
+	kl.SortByValues = !kl.SortByValues
 	kl.Update()
 }
 
-// MapAdd adds a new entry to the map
-func (kl *KeyedList) MapAdd() {
+// AddItem adds a new key-value item to the map.
+func (kl *KeyedList) AddItem() {
 	if reflectx.AnyIsNil(kl.Map) {
 		return
 	}
 	reflectx.MapAdd(kl.Map)
-
-	kl.SendChange()
-	kl.Update()
+	kl.UpdateChange()
 }
 
-// MapDelete deletes a key-value from the map
-func (kl *KeyedList) MapDelete(key reflect.Value) {
+// DeleteItem deletes a key-value item from the map.
+func (kl *KeyedList) DeleteItem(key reflect.Value) {
 	if reflectx.AnyIsNil(kl.Map) {
 		return
 	}
 	reflectx.MapDelete(kl.Map, reflectx.NonPointerValue(key))
-
-	kl.SendChange()
-	kl.Update()
+	kl.UpdateChange()
 }
 
-// MakeToolbar configures a [Toolbar] for this view
 func (kl *KeyedList) MakeToolbar(p *tree.Plan) {
 	if reflectx.AnyIsNil(kl.Map) {
 		return
@@ -220,21 +213,21 @@ func (kl *KeyedList) MakeToolbar(p *tree.Plan) {
 	tree.Add(p, func(w *Button) {
 		w.SetText("Sort").SetIcon(icons.Sort).SetTooltip("Switch between sorting by the keys and the values").
 			OnClick(func(e events.Event) {
-				kl.ToggleSort()
+				kl.toggleSort()
 			})
 	})
 	if !kl.IsReadOnly() {
 		tree.Add(p, func(w *Button) {
 			w.SetText("Add").SetIcon(icons.Add).SetTooltip("Add a new element to the map").
 				OnClick(func(e events.Event) {
-					kl.MapAdd()
+					kl.AddItem()
 				})
 		})
 	}
 }
 
-// BindMapKey is a version of [Bind] that works for keys in a map.
-func BindMapKey[T Value](mapv reflect.Value, key reflect.Value, vw T) T {
+// bindMapKey is a version of [Bind] that works for keys in a map.
+func bindMapKey[T Value](mapv reflect.Value, key reflect.Value, vw T) T {
 	wb := vw.AsWidget()
 	alreadyBound := wb.ValueUpdate != nil
 	wb.ValueUpdate = func() {
@@ -265,17 +258,17 @@ func BindMapKey[T Value](mapv reflect.Value, key reflect.Value, vw T) T {
 		d.RunDialog(vw)
 	}
 	if alreadyBound {
-		resetWidgetValue(vw)
+		ResetWidgetValue(vw)
 	}
 	if ob, ok := any(vw).(OnBinder); ok {
-		ob.OnBind(key.Interface())
+		ob.OnBind(key.Interface(), "")
 	}
 	wb.ValueUpdate() // we update it with the initial value immediately
 	return vw
 }
 
-// BindMapValue is a version of [Bind] that works for values in a map.
-func BindMapValue[T Value](mapv reflect.Value, key reflect.Value, vw T) T {
+// bindMapValue is a version of [Bind] that works for values in a map.
+func bindMapValue[T Value](mapv reflect.Value, key reflect.Value, vw T) T {
 	wb := vw.AsWidget()
 	alreadyBound := wb.ValueUpdate != nil
 	wb.ValueUpdate = func() {
@@ -292,11 +285,11 @@ func BindMapValue[T Value](mapv reflect.Value, key reflect.Value, vw T) T {
 		mapv.SetMapIndex(key, value.Elem())
 	}
 	if alreadyBound {
-		resetWidgetValue(vw)
+		ResetWidgetValue(vw)
 	}
 	if ob, ok := any(vw).(OnBinder); ok {
 		value := mapv.MapIndex(key).Interface()
-		ob.OnBind(value)
+		ob.OnBind(value, "")
 	}
 	wb.ValueUpdate() // we update it with the initial value immediately
 	return vw

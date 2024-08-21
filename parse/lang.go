@@ -11,7 +11,7 @@ import (
 	"cogentcore.org/core/parse/syms"
 )
 
-// Lang provides a general interface for language-specific management
+// Language provides a general interface for language-specific management
 // of the lexing, parsing, and symbol lookup process.
 // The parse lexer and parser machinery is entirely language-general
 // but specific languages may need specific ways of managing these
@@ -24,14 +24,14 @@ import (
 // own implementation of the interface and any other associated
 // functionality.
 //
-// The Lang is responsible for accessing the appropriate [Parser] for this
+// The Language is responsible for accessing the appropriate [Parser] for this
 // language (initialized and managed via LangSupport.OpenStandard() etc)
 // and the [FileState] structure contains all the input and output
 // state information for a given file.
 //
 // This interface is likely to evolve as we expand the range of supported
 // languages.
-type Lang interface {
+type Language interface {
 	// Parser returns the [Parser] for this language
 	Parser() *Parser
 
@@ -44,17 +44,17 @@ type Lang interface {
 	// If txt is nil then any existing source in fs is used.
 	ParseFile(fs *FileStates, txt []byte)
 
-	// HiLine does the lexing and potentially parsing of a given line of the file,
+	// HighlightLine does the lexing and potentially parsing of a given line of the file,
 	// for purposes of syntax highlighting -- uses Done() FileState of existing context
 	// if available from prior lexing / parsing. Line is in 0-indexed "internal" line indexes,
 	// and provides relevant context for the overall parsing, which is performed
 	// on the given line of text runes, and also updates corresponding source in FileState
 	// (via a copy).  If txt is nil then any existing source in fs is used.
-	HiLine(fs *FileStates, line int, txt []rune) lexer.Line
+	HighlightLine(fs *FileStates, line int, txt []rune) lexer.Line
 
 	// CompleteLine provides the list of relevant completions for given text
 	// which is at given position within the file.
-	// Typically the language will call ParseLine on that line, and use the Ast
+	// Typically the language will call ParseLine on that line, and use the AST
 	// to guide the selection of relevant symbols that can complete the code at
 	// the given point.
 	CompleteLine(fs *FileStates, text string, pos lexer.Pos) complete.Matches
@@ -90,7 +90,7 @@ type Lang interface {
 	// have a more recent modification date than the cache file.  This returns the
 	// language-appropriate set of symbols for the directory(s), which could then provide
 	// the symbols for a given package, library, or module at that path.
-	ParseDir(fs *FileState, path string, opts LangDirOpts) *syms.Symbol
+	ParseDir(fs *FileState, path string, opts LanguageDirOptions) *syms.Symbol
 
 	// LexLine is a lower-level call (mostly used internally to the language) that
 	// does just the lexing of a given line of the file, using existing context
@@ -104,13 +104,13 @@ type Lang interface {
 	// the FileState for just that line.  Line is in 0-indexed "internal" line indexes.
 	// The rune source information is assumed to have already been updated in FileState
 	// Existing context information from full-file parsing is used as appropriate, but
-	// the results will NOT be used to update any existing full-file Ast representation --
+	// the results will NOT be used to update any existing full-file AST representation --
 	// should call ParseFile to update that as appropriate.
 	ParseLine(fs *FileState, line int) *FileState
 }
 
-// LangDirOpts provides options for Lang ParseDir method
-type LangDirOpts struct {
+// LanguageDirOptions provides options for the [Language.ParseDir] method
+type LanguageDirOptions struct {
 
 	// process subdirectories -- otherwise not
 	Subdirs bool

@@ -1,5 +1,3 @@
-# Forms
-
 Cogent Core provides interactive forms that allow you to display a struct value to users and have them edit it.
 
 You can make a form from any struct pointer:
@@ -9,7 +7,7 @@ type person struct {
     Name string
     Age  int
 }
-core.NewForm(parent).SetStruct(&person{Name: "Go", Age: 35})
+core.NewForm(b).SetStruct(&person{Name: "Go", Age: 35})
 ```
 
 You can make a form that fits in one line:
@@ -19,7 +17,7 @@ type person struct {
     Name string
     Age  int
 }
-core.NewForm(parent).SetInline(true).SetStruct(&person{Name: "Go", Age: 35})
+core.NewForm(b).SetInline(true).SetStruct(&person{Name: "Go", Age: 35})
 ```
 
 You can detect when the user changes the value of the form:
@@ -30,8 +28,8 @@ type person struct {
     Age  int
 }
 p := person{Name: "Go", Age: 35}
-core.NewForm(parent).SetStruct(&p).OnChange(func(e events.Event) {
-    core.MessageSnackbar(parent, fmt.Sprintf("You are %v", p))
+core.NewForm(b).SetStruct(&p).OnChange(func(e events.Event) {
+    core.MessageSnackbar(b, fmt.Sprintf("You are %v", p))
 })
 ```
 
@@ -43,8 +41,8 @@ type person struct {
     Age  int
 }
 p := person{Name: "Go", Age: 35}
-core.NewForm(parent).SetStruct(&p).OnChange(func(e events.Event) {
-    core.MessageSnackbar(parent, fmt.Sprintf("You are %v", p))
+core.NewForm(b).SetStruct(&p).OnChange(func(e events.Event) {
+    core.MessageSnackbar(b, fmt.Sprintf("You are %v", p))
 })
 ```
 
@@ -55,7 +53,7 @@ type person struct {
     Name string
     Age  int `display:"-"`
 }
-core.NewForm(parent).SetStruct(&person{Name: "Go", Age: 35})
+core.NewForm(b).SetStruct(&person{Name: "Go", Age: 35})
 ```
 
 You can prevent the user from editing certain fields:
@@ -65,7 +63,7 @@ type person struct {
     Name string `edit:"-"`
     Age  int
 }
-core.NewForm(parent).SetStruct(&person{Name: "Go", Age: 35})
+core.NewForm(b).SetStruct(&person{Name: "Go", Age: 35})
 ```
 
 You can prevent the user from editing the entire form:
@@ -75,7 +73,17 @@ type person struct {
     Name string
     Age  int
 }
-core.NewForm(parent).SetStruct(&person{Name: "Go", Age: 35}).SetReadOnly(true)
+core.NewForm(b).SetStruct(&person{Name: "Go", Age: 35}).SetReadOnly(true)
+```
+
+You can change the label of a field:
+
+```Go
+type person struct {
+    Name string `label:"Nickname"`
+    Age  int
+}
+core.NewForm(b).SetStruct(&person{Name: "Go", Age: 35})
 ```
 
 You can use structs with embedded fields:
@@ -89,7 +97,7 @@ type employee struct {
     Person
     Role string
 }
-core.NewForm(parent).SetStruct(&employee{Person{Name: "Go", Age: 35}, "Programmer"})
+core.NewForm(b).SetStruct(&employee{Person{Name: "Go", Age: 35}, "Programmer"})
 ```
 
 You can display fields that are themselves structs:
@@ -103,7 +111,7 @@ type employee struct {
     Role    string
     Manager person
 }
-core.NewForm(parent).SetStruct(&employee{"Programmer", person{Name: "Go", Age: 35}})
+core.NewForm(b).SetStruct(&employee{"Programmer", person{Name: "Go", Age: 35}})
 ```
 
 You can expand fields that are themselves structs:
@@ -117,7 +125,7 @@ type employee struct {
     Role    string
     Manager person `display:"add-fields"`
 }
-core.NewForm(parent).SetStruct(&employee{"Programmer", person{Name: "Go", Age: 35}})
+core.NewForm(b).SetStruct(&employee{"Programmer", person{Name: "Go", Age: 35}})
 ```
 
 You can specify a default value (or list or range of values) for a field, which will be displayed in the tooltip for the field label, make the label highlighted when the value is non-default, and allow the user to reset the value to the default value by double clicking on the label:
@@ -128,7 +136,7 @@ type person struct {
     Age       int    `default:"20:30"`
     Precision int    `default:"64,32"`
 }
-core.NewForm(parent).SetStruct(&person{Name: "Go", Age: 35, Precision: 50})
+core.NewForm(b).SetStruct(&person{Name: "Go", Age: 35, Precision: 50})
 ```
 
 You can make a button that opens up a dialog with a form:
@@ -138,7 +146,7 @@ type person struct {
     Name string
     Age  int
 }
-core.NewFormButton(parent).SetStruct(&person{Name: "Go", Age: 35})
+core.NewFormButton(b).SetStruct(&person{Name: "Go", Age: 35})
 ```
 
 You can make it so that the documentation comments for struct fields are used as tooltips for the label and value widgets of a form by adding the type to [[types]] and running `core generate`:

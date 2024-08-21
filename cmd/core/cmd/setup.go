@@ -6,16 +6,13 @@ package cmd
 
 import (
 	"fmt"
-	"log/slog"
 	"path/filepath"
 	"runtime"
 
 	"cogentcore.org/core/base/exec"
+	"cogentcore.org/core/base/logx"
 	"cogentcore.org/core/cmd/core/config"
-	"github.com/mitchellh/go-homedir"
 )
-
-const vulkanVersion = "1.3.283.0"
 
 // Setup installs platform-specific dependencies for the current platform.
 // It only needs to be called once per system.
@@ -29,23 +26,8 @@ func Setup(c *config.Config) error { //types:add
 			if err != nil {
 				return err
 			}
-		}
-		err = vc.Run("curl", "-O", "https://sdk.lunarg.com/sdk/download/"+vulkanVersion+"/mac/vulkansdk-macos-"+vulkanVersion+".dmg")
-		if err != nil {
-			return err
-		}
-		err = exec.Run("sudo", "hdiutil", "attach", "vulkansdk-macos-"+vulkanVersion+".dmg")
-		if err != nil {
-			return err
-		}
-		home, err := homedir.Dir()
-		if err != nil {
-			return err
-		}
-		root := filepath.Join(home, "VulkanSDK", vulkanVersion)
-		err = vc.Run("sudo", "/Volumes/vulkansdk-macos-"+vulkanVersion+"/InstallVulkan.app/Contents/MacOS/InstallVulkan", "--root", root, "--accept-licenses", "--default-answer", "--confirm-command", "install", "com.lunarg.vulkan.core", "com.lunarg.vulkan.usr", "com.lunarg.vulkan.sdl2", "com.lunarg.vulkan.glm", "com.lunarg.vulkan.volk", "com.lunarg.vulkan.vma")
-		if err != nil {
-			return err
+		} else {
+			logx.PrintlnWarn("xcode tools already installed")
 		}
 		return nil
 	case "linux":
@@ -55,7 +37,7 @@ func Setup(c *config.Config) error { //types:add
 			if err != nil {
 				return err
 			}
-			return vc.Run("sudo", "apt-get", "install", "libgl1-mesa-dev", "xorg-dev")
+			return vc.Run("sudo", "apt-get", "install", "-f", "-y", "libgl1-mesa-dev", "libegl1-mesa-dev", "mesa-vulkan-drivers", "xorg-dev")
 		}
 		_, err = exec.LookPath("dnf")
 		if err == nil {
@@ -63,7 +45,42 @@ func Setup(c *config.Config) error { //types:add
 		}
 		return fmt.Errorf("unknown Linux distro (apt-get and dnf not found); file an issue at https://github.com/cogentcore/core/issues")
 	case "windows":
-		slog.Warn("Follow the manual setup instructions in the documentation for Windows.")
+		if _, err := exec.LookPath("gcc"); err != nil {
+			err := vc.Run("curl", "-OL", "https://github.com/skeeto/w64devkit/releases/download/v2.0.0/w64devkit-x64-2.0.0.exe")
+			if err != nil {
+				return err
+			}
+			path, err := filepath.Abs("w64devkit-x64-2.0.0.exe")
+			if err != nil {
+				return err
+			}
+			err = vc.Run(path, "x", "-oC:", "-aoa")
+			if err != nil {
+				return err
+			}
+			err = windowsRegistryAddPath(`C:\w64devkit\bin`)
+			if err != nil {
+				return err
+			}
+		} else {
+			logx.PrintlnWarn("gcc already installed")
+		}
+		if _, err := exec.LookPath("git"); err != nil {
+			err := vc.Run("curl", "-OL", "https://github.com/git-for-windows/git/releases/download/v2.45.2.windows.1/Git-2.45.2-64-bit.exe")
+			if err != nil {
+				return err
+			}
+			path, err := filepath.Abs("Git-2.45.2-64-bit.exe")
+			if err != nil {
+				return err
+			}
+			err = vc.Run(path)
+			if err != nil {
+				return err
+			}
+		} else {
+			logx.PrintlnWarn("git already installed")
+		}
 		return nil
 	}
 	return fmt.Errorf("platform %q not supported for core setup", runtime.GOOS)

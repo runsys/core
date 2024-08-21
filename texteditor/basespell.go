@@ -9,277 +9,201 @@ package texteditor
 
 import (
 	"image"
-	"log"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
-	"cogentcore.org/core/base/errors"
-	"cogentcore.org/core/base/fsx"
 	"cogentcore.org/core/core"
 	"cogentcore.org/core/events"
 	"cogentcore.org/core/spell"
 )
 
-// InitSpell tries to load the saved fuzzy.spell model.
-// If unsuccessful tries to create a new model from a text file used as input
-func InitSpell() error {
-	if spell.Initialized() {
+// initSpell ensures that the [spell.Spell] spell checker is set up.
+func initSpell() error {
+	if core.TheApp.Platform().IsMobile() { // todo: too slow -- fix with aspell
 		return nil
 	}
-	err := OpenSpellModel()
-	if err != nil {
-		errors.Log(spell.OpenDefault())
+	if spell.Spell != nil {
+		return nil
 	}
-	return nil
-}
-
-// OpenSpellModel loads a saved spelling model
-func OpenSpellModel() error {
 	pdir := core.TheApp.CogentCoreDataDir()
-	openpath := filepath.Join(pdir, "spell_en_us.json")
-	return spell.Open(openpath)
-}
-
-// NewSpellModelFromText builds a NEW spelling model from text
-func NewSpellModelFromText() error {
-	bigdatapath, err := fsx.GoSrcDir("cogentcore.org/core/spell")
-	if err != nil {
-		slog.Error("getting path to corpus directory", "err", err)
-		return err
-	}
-
-	bigdatafile := filepath.Join(bigdatapath, "big.txt")
-	file, err := os.Open(bigdatafile)
-	if err != nil {
-		slog.Error("Could not open corpus file. This file is used to create the spelling model", "file", bigdatafile, "err", err)
-		return err
-	}
-
-	err = spell.Train(*file, true) // true - create a NEW spelling model
-	if err != nil {
-		slog.Error("Failed building model from corpus file", "err", err)
-		return err
-	}
-
-	SaveSpellModel()
-
+	openpath := filepath.Join(pdir, "user_dict_en_us")
+	spell.Spell = spell.NewSpell(openpath)
 	return nil
 }
 
-// AddToSpellModel trains on additional text - extends model
-func AddToSpellModel(filepath string) error {
-	InitSpell() // make sure model is initialized
-	file, err := os.Open(filepath)
-	if err != nil {
-		log.Printf("Could not open text file selected for training: %v.\n", err)
-		return err
-	}
-
-	err = spell.Train(*file, false) // false - append rather than create new
-	if err != nil {
-		log.Printf("Failed appending to spell model: %v.\n", err)
-		return err
-	}
-	return nil
-}
-
-// SaveSpellModel saves the spelling model which includes the data and parameters
-func SaveSpellModel() error {
-	pdir := core.TheApp.CogentCoreDataDir()
-	path := filepath.Join(pdir, "spell_en_us.json")
-	err := spell.Save(path)
-	if err != nil {
-		log.Printf("Could not save spelling model to file: %v.\n", err)
-	}
-	return err
-}
-
-////////////////////////////////////////////////////////////////////////////////////////
-// Spell
-
-// Spell
-type Spell struct { //types:add -setters
+// spellCheck has all the texteditor spell check state
+type spellCheck struct {
 	// line number in source that spelling is operating on, if relevant
-	SrcLn int
+	srcLn int
 
 	// character position in source that spelling is operating on (start of word to be corrected)
-	SrcCh int
+	srcCh int
 
 	// list of suggested corrections
-	Suggest []string
+	suggest []string
 
 	// word being checked
-	Word string `set:"-"`
+	word string
 
 	// last word learned -- can be undone -- stored in lowercase format
-	LastLearned string `set:"-"`
+	lastLearned string
 
 	// the user's correction selection
-	Correction string `set:"-"`
+	correction string
 
 	// the event listeners for the spell (it sends Select events)
-	Listeners events.Listeners `set:"-" display:"-"`
+	listeners events.Listeners
 
-	// Stage is the [PopupStage] associated with the [Spell]
-	Stage *core.Stage
+	// stage is the popup [core.Stage] associated with the [spellState]
+	stage *core.Stage
 
-	ShowMu sync.Mutex `set:"-"`
-
-	// the scene where the current popup menu is presented
-	// Sc *Scene ` set:"-"`
+	showMu sync.Mutex
 }
 
-// SpellSignals are signals that are sent by Spell
-type SpellSignals int32 //enums:enum -trim-prefix Spell
-
-const (
-	// SpellSelect means the user chose one of the possible corrections
-	SpellSelect SpellSignals = iota
-
-	// SpellIgnore signals the user chose ignore so clear the tag
-	SpellIgnore
-)
-
-// NewSpell returns a new [Spell]
-func NewSpell() *Spell {
-	return &Spell{}
+// newSpell returns a new [spellState]
+func newSpell() *spellCheck {
+	initSpell()
+	return &spellCheck{}
 }
 
-// CheckWord checks the model to determine if the word is known.
-// automatically checks the Ignore list first.
-func (sp *Spell) CheckWord(word string) ([]string, bool) {
-	return spell.CheckWord(word)
+// checkWord checks the model to determine if the word is known,
+// bool is true if known, false otherwise. If not known,
+// returns suggestions for close matching words.
+func (sp *spellCheck) checkWord(word string) ([]string, bool) {
+	if spell.Spell == nil {
+		return nil, false
+	}
+	return spell.Spell.CheckWord(word)
 }
 
-// SetWord sets the word to spell and other associated info
-func (sp *Spell) SetWord(word string, sugs []string, srcLn, srcCh int) *Spell {
-	sp.Word = word
-	sp.Suggest = sugs
-	sp.SrcLn = srcLn
-	sp.SrcCh = srcCh
+// setWord sets the word to spell and other associated info
+func (sp *spellCheck) setWord(word string, sugs []string, srcLn, srcCh int) *spellCheck {
+	sp.word = word
+	sp.suggest = sugs
+	sp.srcLn = srcLn
+	sp.srcCh = srcCh
 	return sp
 }
 
-// Show is the main call for listing spelling corrections.
+// show is the main call for listing spelling corrections.
 // Calls ShowNow which builds the correction popup menu
-// Similar to completion.Show but does not use a timer
+// Similar to completion.show but does not use a timer
 // Displays popup immediately for any unknown word
-func (sp *Spell) Show(text string, ctx core.Widget, pos image.Point) {
-	if sp.Stage != nil {
-		sp.Cancel()
+func (sp *spellCheck) show(text string, ctx core.Widget, pos image.Point) {
+	if sp.stage != nil {
+		sp.cancel()
 	}
-	sp.ShowNow(text, ctx, pos)
+	sp.showNow(text, ctx, pos)
 }
 
-// ShowNow actually builds the correction popup menu
-func (sp *Spell) ShowNow(word string, ctx core.Widget, pos image.Point) {
-	if sp.Stage != nil {
-		sp.Cancel()
+// showNow actually builds the correction popup menu
+func (sp *spellCheck) showNow(word string, ctx core.Widget, pos image.Point) {
+	if sp.stage != nil {
+		sp.cancel()
 	}
-	sp.ShowMu.Lock()
-	defer sp.ShowMu.Unlock()
+	sp.showMu.Lock()
+	defer sp.showMu.Unlock()
 
 	sc := core.NewScene(ctx.AsTree().Name + "-spell")
-	core.MenuSceneConfigStyles(sc)
-	sp.Stage = core.NewPopupStage(core.CompleterStage, sc, ctx).SetPos(pos)
+	core.StyleMenuScene(sc)
+	sp.stage = core.NewPopupStage(core.CompleterStage, sc, ctx).SetPos(pos)
 
-	if sp.IsLastLearned(word) {
+	if sp.isLastLearned(word) {
 		core.NewButton(sc).SetText("unlearn").SetTooltip("unlearn the last learned word").
 			OnClick(func(e events.Event) {
-				sp.Cancel()
-				sp.UnLearnLast()
+				sp.cancel()
+				sp.unLearnLast()
 			})
 	} else {
-		count := len(sp.Suggest)
-		if count == 1 && sp.Suggest[0] == word {
+		count := len(sp.suggest)
+		if count == 1 && sp.suggest[0] == word {
 			return
 		}
 		if count == 0 {
 			core.NewButton(sc).SetText("no suggestion")
 		} else {
 			for i := 0; i < count; i++ {
-				text := sp.Suggest[i]
+				text := sp.suggest[i]
 				core.NewButton(sc).SetText(text).OnClick(func(e events.Event) {
-					sp.Cancel()
-					sp.Spell(text)
+					sp.cancel()
+					sp.spell(text)
 				})
 			}
 		}
 		core.NewSeparator(sc)
 		core.NewButton(sc).SetText("learn").OnClick(func(e events.Event) {
-			sp.Cancel()
-			sp.LearnWord()
+			sp.cancel()
+			sp.learnWord()
 		})
 		core.NewButton(sc).SetText("ignore").OnClick(func(e events.Event) {
-			sp.Cancel()
-			sp.IgnoreWord()
+			sp.cancel()
+			sp.ignoreWord()
 		})
 	}
 	if sc.NumChildren() > 0 {
 		sc.Events.SetStartFocus(sc.Child(0).(core.Widget))
 	}
-	sp.Stage.RunPopup()
+	sp.stage.Run()
 }
 
-// Spell sends a Select event to Listeners indicating that the user has made a
+// spell sends a Select event to Listeners indicating that the user has made a
 // selection from the list of possible corrections
-func (sp *Spell) Spell(s string) {
-	sp.Cancel()
-	sp.Correction = s
-	sp.Listeners.Call(&events.Base{Typ: events.Select})
+func (sp *spellCheck) spell(s string) {
+	sp.cancel()
+	sp.correction = s
+	sp.listeners.Call(&events.Base{Typ: events.Select})
 }
 
-// OnSelect registers given listener function for Select events on Value.
+// onSelect registers given listener function for Select events on Value.
 // This is the primary notification event for all Complete elements.
-func (sp *Spell) OnSelect(fun func(e events.Event)) {
-	sp.On(events.Select, fun)
+func (sp *spellCheck) onSelect(fun func(e events.Event)) {
+	sp.on(events.Select, fun)
 }
 
-// On adds an event listener function for the given event type
-func (sp *Spell) On(etype events.Types, fun func(e events.Event)) {
-	sp.Listeners.Add(etype, fun)
+// on adds an event listener function for the given event type
+func (sp *spellCheck) on(etype events.Types, fun func(e events.Event)) {
+	sp.listeners.Add(etype, fun)
 }
 
-// LearnWord gets the misspelled/unknown word and passes to LearnWord
-func (sp *Spell) LearnWord() {
-	sp.LastLearned = strings.ToLower(sp.Word)
-	spell.LearnWord(sp.Word)
+// learnWord gets the misspelled/unknown word and passes to learnWord
+func (sp *spellCheck) learnWord() {
+	sp.lastLearned = strings.ToLower(sp.word)
+	spell.Spell.AddWord(sp.word)
 }
 
-// IsLastLearned returns true if given word was the last one learned
-func (sp *Spell) IsLastLearned(wrd string) bool {
+// isLastLearned returns true if given word was the last one learned
+func (sp *spellCheck) isLastLearned(wrd string) bool {
 	lword := strings.ToLower(wrd)
-	return lword == sp.LastLearned
+	return lword == sp.lastLearned
 }
 
-// UnLearnLast unlearns the last learned word -- in case accidental
-func (sp *Spell) UnLearnLast() {
-	if sp.LastLearned == "" {
+// unLearnLast unlearns the last learned word -- in case accidental
+func (sp *spellCheck) unLearnLast() {
+	if sp.lastLearned == "" {
 		slog.Error("spell.UnLearnLast: no last learned word")
 		return
 	}
-	lword := sp.LastLearned
-	sp.LastLearned = ""
-	spell.UnLearnWord(lword)
+	lword := sp.lastLearned
+	sp.lastLearned = ""
+	spell.Spell.DeleteWord(lword)
 }
 
-// IgnoreWord adds the word to the ignore list
-func (sp *Spell) IgnoreWord() {
-	spell.IgnoreWord(sp.Word)
+// ignoreWord adds the word to the ignore list
+func (sp *spellCheck) ignoreWord() {
+	spell.Spell.IgnoreWord(sp.word)
 }
 
-// Cancel cancels any pending spell correction.
+// cancel cancels any pending spell correction.
 // call when new events nullify prior correction.
 // returns true if canceled
-func (sp *Spell) Cancel() bool {
-	if sp.Stage == nil {
+func (sp *spellCheck) cancel() bool {
+	if sp.stage == nil {
 		return false
 	}
-	st := sp.Stage
-	sp.Stage = nil
+	st := sp.stage
+	sp.stage = nil
 	st.ClosePopup()
 	return true
 }

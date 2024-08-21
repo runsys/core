@@ -10,7 +10,7 @@ The simple idea is that each line is either Go or shell commands, determined in 
 Examples:
 
 ```go
-for i, f := range shell.SplitLines(`ls -la`) {  // `ls` executes returns string
+for i, f := range cosh.SplitLines(`ls -la`) {  // `ls` executes returns string
     echo {i} {strings.ToLower(f)}               // {} surrounds go within shell
 }
 ```
@@ -87,7 +87,7 @@ or by referring to specific arg indexes etc.
 To make a script behave like a standard Makefile, you can define different `command`s for each of the make commands, and then add the following at the end of the file to use the args to run commands:
 
 ```go
-shell.RunCommands(args...)
+shell.RunCommands(args)
 ```
 
 See [make](cmd/cosh/testdata/make) for an example, in `cmd/cosh/testdata/make`, which can be run for example using:

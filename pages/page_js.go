@@ -14,8 +14,20 @@ import (
 	"cogentcore.org/core/base/errors"
 )
 
+// firstPage is the first [Page] used for [getWebURL] or [saveWebURL],
+// which is used to prevent nested [Page] widgets from incorrectly affecting the URL.
+var firstPage *Page
+
+var documentData = js.Global().Get("document").Get("documentElement").Get("dataset")
+
 func init() {
-	getWebURL = func() string {
+	getWebURL = func(p *Page) string {
+		if firstPage == nil {
+			firstPage = p
+		}
+		if firstPage != p {
+			return "/"
+		}
 		full, base, err := getURL()
 		if errors.Log(err) != nil {
 			return "/"
@@ -23,7 +35,13 @@ func init() {
 		result := strings.TrimPrefix(full.String(), base.String())
 		return "/" + result
 	}
-	saveWebURL = func(u string) {
+	saveWebURL = func(p *Page, u string) {
+		if firstPage == nil {
+			firstPage = p
+		}
+		if firstPage != p {
+			return
+		}
 		_, base, err := getURL()
 		if errors.Log(err) != nil {
 			return
@@ -53,11 +71,23 @@ func getURL() (full, base *url.URL, err error) {
 		base = originalBase
 		return
 	}
-	basePath, err := url.Parse(js.Global().Get("document").Get("documentElement").Get("dataset").Get("basePath").String())
+	basePath, err := url.Parse(documentData.Get("basePath").String())
 	if err != nil {
 		return
 	}
 	base = full.ResolveReference(basePath)
 	originalBase = base
+
+	// We must apply our new absolute base path to all of the links so
+	// that the favicon updates correctly on future page changes.
+	documentData.Set("basePath", base.String())
+	links := js.Global().Get("document").Get("head").Call("getElementsByTagName", "link")
+	for i := range links.Length() {
+		link := links.Index(i)
+		// Get returns the absolute version, so we can just call Set with it
+		// to update the href to actually be the absolute version.
+		link.Set("href", link.Get("href").String())
+	}
+
 	return
 }

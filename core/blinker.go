@@ -9,90 +9,93 @@ import (
 	"time"
 )
 
-// Blinker manages the logistics of blinking things, such as cursors
+// Blinker manages the logistics of blinking things, such as cursors.
 type Blinker struct {
-	// Ticker is the time.Ticker
+
+	// Ticker is the [time.Ticker] used to control the blinking.
 	Ticker *time.Ticker
 
-	// Widget is the current widget subject to blinking
+	// Widget is the current widget subject to blinking.
 	Widget Widget
 
-	// Func is the function called every tick under Mu mutex protection
+	// Func is the function called every tick.
+	// The mutex is locked at the start but must be unlocked
+	// when transitioning to locking the render context mutex.
 	Func func()
 
-	Quit chan struct{}
+	quit chan struct{}
 
-	Mu sync.Mutex
+	// Use Lock and Unlock on blinker directly.
+	sync.Mutex
 }
 
-// Blink sets up the blinking; does nothing if already setup
+// Blink sets up the blinking; does nothing if already set up.
 func (bl *Blinker) Blink(dur time.Duration) {
-	bl.Mu.Lock()
-	defer bl.Mu.Unlock()
+	bl.Lock()
+	defer bl.Unlock()
 	if bl.Ticker != nil {
 		return
 	}
 	bl.Ticker = time.NewTicker(dur)
-	bl.Quit = make(chan struct{})
-	go bl.BlinkLoop()
+	bl.quit = make(chan struct{})
+	go bl.blinkLoop()
 }
 
-// SetWidget sets Widget to given one, under mutex lock
+// SetWidget sets the [Blinker.Widget] under mutex lock.
 func (bl *Blinker) SetWidget(w Widget) {
-	bl.Mu.Lock()
-	defer bl.Mu.Unlock()
+	bl.Lock()
+	defer bl.Unlock()
 	bl.Widget = w
 }
 
-// ResetWidget sets Widget = nil if it is currently set to given one
+// ResetWidget sets [Blinker.Widget] to nil if it is currently set to the given one.
 func (bl *Blinker) ResetWidget(w Widget) {
-	bl.Mu.Lock()
-	defer bl.Mu.Unlock()
+	bl.Lock()
+	defer bl.Unlock()
 	if bl.Widget == w {
 		bl.Widget = nil
 	}
 }
 
-// BlinkLoop is the blinker's main control loop
-func (bl *Blinker) BlinkLoop() {
+// blinkLoop is the blinker's main control loop.
+func (bl *Blinker) blinkLoop() {
 	for {
-		bl.Mu.Lock()
+		bl.Lock()
 		if bl.Ticker == nil {
-			bl.Mu.Unlock()
+			bl.Unlock()
 			return // shutdown..
 		}
-		bl.Mu.Unlock()
+		bl.Unlock()
 		select {
 		case <-bl.Ticker.C:
-		case <-bl.Quit:
+		case <-bl.quit:
 			return
 		}
-		bl.Mu.Lock()
+		bl.Lock()
 		if bl.Widget == nil {
-			bl.Mu.Unlock()
+			bl.Unlock()
 			continue
 		}
 		wb := bl.Widget.AsWidget()
 		if wb.Scene == nil || wb.Scene.Stage.Main == nil {
 			bl.Widget = nil
-			bl.Mu.Unlock()
+			bl.Unlock()
 			continue
 		}
-		bl.Func()
-		bl.Mu.Unlock()
+		bl.Func() // we enter the function locked
 	}
 
 }
 
-// QuitClean is a cleanup function to call during Quit that
-// breaks out of the ticker loop
+// QuitClean is a cleanup function to pass to [TheApp.AddQuitCleanFunc]
+// that breaks out of the ticker loop.
 func (bl *Blinker) QuitClean() {
-	bl.Mu.Lock()
-	defer bl.Mu.Unlock()
+	bl.Lock()
+	defer bl.Unlock()
 	if bl.Ticker != nil {
 		bl.Widget = nil
 		bl.Ticker.Stop()
 		bl.Ticker = nil
-		bl.Quit <- struct{}{}
+		bl.quit <- struct{}{}
 	}
 }

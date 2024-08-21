@@ -17,7 +17,7 @@ import (
 // Toolbar is a [Frame] that is useful for holding [Button]s that do things.
 // It automatically moves items that do not fit into an overflow menu, and
 // manages additional items that are always placed onto this overflow menu.
-// Use [Body.AddAppBar] to add to the default toolbar at the top of an app.
+// Use [Body.AddAppBar] to add to the default toolbar at the top of the app.
 type Toolbar struct {
 	Frame
 
@@ -38,6 +38,12 @@ type Toolbar struct {
 	overflowButton *Button
 }
 
+// ToolbarMaker is an interface that types can implement to make a toolbar plan.
+// It is automatically used when making [Value] dialogs.
+type ToolbarMaker interface {
+	MakeToolbar(p *tree.Plan)
+}
+
 func (tb *Toolbar) Init() {
 	tb.Frame.Init()
 	ToolbarStyles(tb)
@@ -51,20 +57,15 @@ func (tb *Toolbar) Init() {
 			w.Updater(func() {
 				tb, ok := w.Parent.(*Toolbar)
 				if ok {
-					w.Menu = tb.OverflowMenu
+					w.Menu = tb.overflowMenu
 				}
 			})
 		})
 	})
 }
 
-func (tb *Toolbar) IsVisible() bool {
-	// do not render toolbars with no buttons
-	return tb.WidgetBase.IsVisible() && len(tb.Children) > 0
-}
-
 func (tb *Toolbar) SizeUp() {
-	tb.AllItemsToChildren()
+	tb.allItemsToChildren()
 	tb.Frame.SizeUp()
 }
 
@@ -74,7 +75,7 @@ func (tb *Toolbar) SizeDown(iter int) bool {
 		return true // ensure a second pass
 	}
 	if tb.Scene.showIter > 0 {
-		tb.MoveToOverflow()
+		tb.moveToOverflow()
 	}
 	return redo
 }
@@ -93,11 +94,11 @@ func (tb *Toolbar) SizeFromChildren(iter int, pass LayoutPasses) math32.Vector2 
 	return csz
 }
 
-// AllItemsToChildren moves the overflow items back to the children,
+// allItemsToChildren moves the overflow items back to the children,
 // so the full set is considered for the next layout round,
 // and ensures the overflow button is made and moves it
 // to the end of the list.
-func (tb *Toolbar) AllItemsToChildren() {
+func (tb *Toolbar) allItemsToChildren() {
 	tb.overflowItems = nil
 	tb.allItemsPlan = &tree.Plan{Parent: tb.This}
 	tb.Make(tb.allItemsPlan)
@@ -108,20 +109,20 @@ func (tb *Toolbar) AllItemsToChildren() {
 	}
 }
 
-func (tb *Toolbar) ParentSize() float32 {
+func (tb *Toolbar) parentSize() float32 {
 	ma := tb.Styles.Direction.Dim()
-	psz := tb.ParentWidget().Geom.Size.Alloc.Content.Sub(tb.Geom.Size.Space)
+	psz := tb.parentWidget().Geom.Size.Alloc.Content.Sub(tb.Geom.Size.Space)
 	avail := psz.Dim(ma)
 	return avail
 }
 
-// MoveToOverflow moves overflow out of children to the OverflowItems list
-func (tb *Toolbar) MoveToOverflow() {
+// moveToOverflow moves overflow out of children to the OverflowItems list
+func (tb *Toolbar) moveToOverflow() {
 	if !tb.HasChildren() {
 		return
 	}
 	ma := tb.Styles.Direction.Dim()
-	avail := tb.ParentSize()
+	avail := tb.parentSize()
 	li := tb.Children[tb.NumChildren()-1]
 	tb.overflowButton = nil
 	if li != nil {
@@ -136,17 +137,17 @@ func (tb *Toolbar) MoveToOverflow() {
 	avsz := avail - ovsz
 	sz := &tb.Geom.Size
 	sz.Alloc.Total.SetDim(ma, avail)
-	sz.SetContentFromTotal(&sz.Alloc)
+	sz.setContentFromTotal(&sz.Alloc)
 	n := len(tb.Children)
 	pn := len(tb.allItemsPlan.Children)
 	ovidx := n - 1
 	hasOv := false
 	szsum := float32(0)
-	tb.WidgetKidsIter(func(i int, kwi Widget, kwb *WidgetBase) bool {
+	tb.ForWidgetChildren(func(i int, cw Widget, cwb *WidgetBase) bool {
 		if i >= n-1 {
 			return tree.Break
 		}
-		ksz := kwb.Geom.Size.Alloc.Total.Dim(ma)
+		ksz := cwb.Geom.Size.Alloc.Total.Dim(ma)
 		szsum += ksz
 		if szsum > avsz {
 			if !hasOv {
@@ -172,8 +173,8 @@ func (tb *Toolbar) MoveToOverflow() {
 	}
 }
 
-// OverflowMenu adds the overflow menu to the given Scene.
-func (tb *Toolbar) OverflowMenu(m *Scene) {
+// overflowMenu adds the overflow menu to the given Scene.
+func (tb *Toolbar) overflowMenu(m *Scene) {
 	nm := len(tb.OverflowMenus)
 	ni := len(tb.overflowItems)
 	if ni > 0 {
@@ -194,20 +195,26 @@ func (tb *Toolbar) OverflowMenu(m *Scene) {
 // AddOverflowMenu adds the given menu function to the overflow menu list.
 // These functions are called in reverse order such that the last added function
 // is called first when constructing the menu.
-func (tb *Toolbar) AddOverflowMenu(fun func(m *Scene)) *Toolbar {
+func (tb *Toolbar) AddOverflowMenu(fun func(m *Scene)) {
 	tb.OverflowMenus = append(tb.OverflowMenus, fun)
-	return tb
 }
 
 // ToolbarStyles styles the given widget to have standard toolbar styling.
 func ToolbarStyles(w Widget) {
-	w.AsWidget().Styler(func(s *styles.Style) {
+	wb := w.AsWidget()
+	wb.Styler(func(s *styles.Style) {
 		s.Border.Radius = styles.BorderRadiusFull
 		s.Background = colors.Scheme.SurfaceContainer
 		s.Gap.Zero()
 		s.Align.Items = styles.Center
+		if len(wb.Children) == 0 {
+			// we must not render toolbars with no children
+			s.Display = styles.DisplayNone
+		} else {
+			s.Display = styles.Flex
+		}
 	})
-	w.AsWidget().FinalStyler(func(s *styles.Style) {
+	wb.FinalStyler(func(s *styles.Style) {
 		if s.Direction == styles.Row {
 			s.Grow.Set(1, 0)
 			s.Padding.SetHorizontal(units.Dp(16))
@@ -216,26 +223,15 @@ func ToolbarStyles(w Widget) {
 			s.Padding.SetVertical(units.Dp(16))
 		}
 	})
-	w.AsWidget().OnWidgetAdded(func(w Widget) { // TODO(config)
-		if bt := AsButton(w); bt != nil {
+	wb.SetOnChildAdded(func(n tree.Node) {
+		if bt := AsButton(n); bt != nil {
 			bt.Type = ButtonAction
 			return
 		}
-		if sp, ok := w.(*Separator); ok {
+		if sp, ok := n.(*Separator); ok {
 			sp.Styler(func(s *styles.Style) {
-				s.Direction = w.AsWidget().Styles.Direction.Other()
+				s.Direction = wb.Styles.Direction.Other()
 			})
 		}
 	})
-}
-
-// BasicBar is a [Frame] that automatically has [ToolbarStyles] applied but does
-// not have the more advanced features of a [Toolbar].
-type BasicBar struct {
-	Frame
-}
-
-func (tb *BasicBar) Init() {
-	tb.Frame.Init()
-	ToolbarStyles(tb)
 }
