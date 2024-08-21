@@ -64,16 +64,11 @@ func (tp *TimePicker) Init() {
 				}
 				w.SetMax(12).SetMin(1)
 			}
-<<<<<<< HEAD
 			w.SetValue(float32(tp.Hour))
 		})
 		w.Styler(func(s *styles.Style) {
 			s.Font.Size.Dp(36)
 			s.Min.X.Dp(96)
-=======
-			w.SetValue(float32(tp.hour))
->>>>>>> upstream/main
-		})
 		w.OnChange(func(e events.Event) {
 			hr := int(w.Value)
 			if hr == 12 && !SystemSettings.Clock24 {
@@ -104,13 +99,10 @@ func (tp *TimePicker) Init() {
 		w.Updater(func() {
 			w.SetValue(float32(tp.Time.Minute()))
 		})
-<<<<<<< HEAD
 		w.Styler(func(s *styles.Style) {
 			s.Font.Size.Dp(36)
 			s.Min.X.Dp(96)
 		})
-=======
->>>>>>> upstream/main
 		w.OnChange(func(e events.Event) {
 			// we set our minute and keep everything else
 			tt := tp.Time

@@ -9,7 +9,6 @@ import (
 )
 
 func main() {
-<<<<<<< HEAD
 	b := core.NewBody("Basic Video Example")
 	fr := core.NewFrame(b)
 
@@ -20,11 +19,6 @@ func main() {
 		s.SetTextWrap(false)
 	})
 	v := video.NewVideo(fr)
-=======
-	b := core.NewBody("Video Example")
-	v := video.NewVideo(b)
-	// v.Rotation = -90
->>>>>>> upstream/main
 	v.Styler(func(s *styles.Style) {
 		s.Grow.Set(1, 1)
 	})
