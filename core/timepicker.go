@@ -64,11 +64,12 @@ func (tp *TimePicker) Init() {
 				}
 				w.SetMax(12).SetMin(1)
 			}
-			w.SetValue(float32(tp.Hour))
+			w.SetValue(float32(tp.hour))
 		})
 		w.Styler(func(s *styles.Style) {
 			s.Font.Size.Dp(36)
 			s.Min.X.Dp(96)
+		})
 		w.OnChange(func(e events.Event) {
 			hr := int(w.Value)
 			if hr == 12 && !SystemSettings.Clock24 {

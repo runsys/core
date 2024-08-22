@@ -17,10 +17,7 @@ import (
 // WriteXML writes the tree to an XML-encoded byte string over io.Writer
 // using MarshalXML.
 func (n *NodeBase) WriteXML(writer io.Writer, indent bool) error {
-	err := checkThis(n)
-	if err != nil {
-		return err
-	}
+	var err error
 	var b []byte
 	if indent {
 		b, err = xml.MarshalIndent(n.This, "", "  ")
@@ -40,11 +37,6 @@ func (n *NodeBase) WriteXML(writer io.Writer, indent bool) error {
 // ReadXML reads the tree from an XML-encoded byte string over io.Reader, calls
 // UnmarshalPost to recover pointers from paths.
 func (n *NodeBase) ReadXML(reader io.Reader) error {
-	var err error
-	if err = checkThis(n); err != nil {
-		log.Println(err)
-		return err
-	}
 	b, err := io.ReadAll(reader)
 	if err != nil {
 		log.Println(err)

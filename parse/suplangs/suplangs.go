@@ -5,9 +5,3 @@
 // Package suplangs includes all the supported languages for parse -- need to
 // import this package to get those all included in a given target
 package suplangs
-
-import (
-	_ "cogentcore.org/core/parse/langs/golang"
-	_ "cogentcore.org/core/parse/langs/markdown"
-	_ "cogentcore.org/core/parse/langs/tex"
-)
